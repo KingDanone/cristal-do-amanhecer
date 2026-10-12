@@ -1064,12 +1064,22 @@ function desenharObjetos() {
 }
 function render() {
   x.font = 'bold 8px monospace'; x.textBaseline = 'alphabetic';
+  // F2.5: overlay de toque só no jogo e na pausa (nunca em diálogo/título).
+  try {
+    var stage = document.getElementById('stage');
+    if (stage) {
+      var mostra = (st === 'play' || menuOpen);
+      if (mostra) stage.classList.remove('ocultar-touch');
+      else stage.classList.add('ocultar-touch');
+    }
+  } catch (e) {}
   F('#000', 0, 0, W, H);
   if (st === 'title') {
     for (var i = 0; i < 40; i++) F('#fff', (i * 53) % W, (i * 37) % H, 1, 1);
+    x.font = 'bold 10px monospace';
     txt('A LENDA DO CRISTAL', W / 2, 40, '#ffd866', 'center');
-    txt('DO AMANHECER', W / 2, 52, '#ffd866', 'center');
-    x.font = 'bold 7px monospace';
+    txt('DO AMANHECER', W / 2, 54, '#ffd866', 'center');
+    x.font = 'bold 8px monospace';
     var cap2 = false;
     try { cap2 = G && G.flags && G.flags.chapter === 2; } catch (e) {}
     txt(cap2 ? 'Cap. 2: A Cidade de Valdora' : 'Prólogo + Cap. 1: Brisamar e a Floresta', W / 2, 70, '#9cf', 'center');
@@ -1094,7 +1104,8 @@ function render() {
     var muted = false;
     try { muted = Aud && typeof Aud.isMuted === 'function' && Aud.isMuted(); } catch (e) {}
     x.font = 'bold 7px monospace';
-    txt(muted ? 'M: som off' : 'M: som on', W / 2, 150, '#666', 'center');
+    txt(muted ? 'M: som off' : 'M: som on', W / 2, 144, '#666', 'center');
+    txt('WASD move · J=A K=B L=C · gamepad ok', W / 2, 154, '#555', 'center');
     return;
   }
   if (!P) return;
@@ -1136,10 +1147,10 @@ function render() {
     }
   }
   for (var hi = 0; hi < (P.hpMax || 8); hi++) F(hi < P.hp ? '#e33' : '#411', 4 + hi * 7, 4, 6, 6);
-  x.font = 'bold 7px monospace';
+  x.font = 'bold 8px monospace';
   txt('▶ ' + textoObjetivo(), 4, 22, '#ffd866');
   if (B && B.hp > 0) {
-    x.font = 'bold 7px monospace';
+    x.font = 'bold 8px monospace';
     txt(B.nome || 'Chefe', 62, H - 15, '#f99');
     F('#000', 60, H - 12, 120, 6); F('#c33', 61, H - 11, 118 * B.hp / (B.hpMax || 24), 4);
   }
@@ -1227,20 +1238,116 @@ function loop(t) {
       if (cenaT >= 160) { st = 'play'; var cb = cenaDepois; cenaDepois = null; if (cb) cb(); }
     }
     else if (st === 'play' && !menuOpen && !emTransicao() && P) update();
+    try { lerGamepad(); } catch (e) {}
   }
   render();
 }
-// ---- input ----
+// ---- input (F2.5: direcional vetorial + gamepad + overlay) ----
 try {
-document.querySelectorAll('[data-k]').forEach(function (b) {
-  var k = b.dataset.k;
-  b.addEventListener('pointerdown', function (e) { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) {} K[k] = 1; b.classList.add('on'); });
-  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (n) { b.addEventListener(n, function () { K[k] = 0; b.classList.remove('on'); }); });
-});
+// D-pad vetorial de 8 direções: arrasto a partir do centro da zona;
+// zona morta 0.25; soltar zera. Multitoque ok (um pointer por controle).
+var dzoneEl = null, dbaseEl = null, dstickEl = null, dPadId = null;
+try {
+  dzoneEl = document.getElementById('dzone');
+  dbaseEl = document.getElementById('dbase');
+  dstickEl = document.getElementById('dstick');
+} catch (e) {}
+function zerarDirecional() { K.u = K.d = K.l = K.r = 0; }
+function aplicarVetor(dx, dy) {
+  var mag = Math.hypot(dx, dy);
+  if (mag < 0.25) { zerarDirecional(); return; }
+  var nx = dx / (mag || 1), ny = dy / (mag || 1);
+  K.r = nx > 0.35 ? 1 : 0; K.l = nx < -0.35 ? 1 : 0;
+  K.d = ny > 0.35 ? 1 : 0; K.u = ny < -0.35 ? 1 : 0;
+}
+function centroZona() {
+  var r = dzoneEl.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2, raio: Math.max(20, r.width / 2) };
+}
+function moverPalito(dx, dy, raio) {
+  if (!dstickEl || !dbaseEl) return;
+  try {
+    var m = Math.min(1, Math.hypot(dx, dy) / raio);
+    var d = Math.max(28, dbaseEl.getBoundingClientRect().width / 2);
+    dstickEl.style.transform = 'translate(' + (dx / (Math.hypot(dx, dy) || 1) * m * d * 0.55) + 'px,' + (dy / (Math.hypot(dx, dy) || 1) * m * d * 0.55) + 'px)';
+  } catch (e) {}
+}
+if (dzoneEl) {
+  dzoneEl.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    try { dzoneEl.setPointerCapture(e.pointerId); } catch (err) {}
+    dPadId = e.pointerId;
+    var c = centroZona();
+    aplicarVetor(e.clientX - c.x, e.clientY - c.y);
+    moverPalito(e.clientX - c.x, e.clientY - c.y, c.raio);
+  });
+  dzoneEl.addEventListener('pointermove', function (e) {
+    if (e.pointerId !== dPadId) return;
+    e.preventDefault();
+    var c = centroZona();
+    aplicarVetor(e.clientX - c.x, e.clientY - c.y);
+    moverPalito(e.clientX - c.x, e.clientY - c.y, c.raio);
+  });
+  var soltarDirecional = function (e) {
+    if (e && e.pointerId !== undefined && e.pointerId !== dPadId) return;
+    dPadId = null; zerarDirecional();
+    try { if (dstickEl) dstickEl.style.transform = ''; } catch (err) {}
+  };
+  dzoneEl.addEventListener('pointerup', soltarDirecional);
+  dzoneEl.addEventListener('pointercancel', soltarDirecional);
+  dzoneEl.addEventListener('lostpointercapture', function () { dPadId = null; zerarDirecional(); });
+}
 document.querySelectorAll('[data-a]').forEach(function (b) {
   b.addEventListener('pointerdown', function (e) { e.preventDefault(); b.classList.add('on'); act(b.dataset.a); });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { b.addEventListener(n, function () { b.classList.remove('on'); }); });
 });
+function alternarMenu() {
+  if (!(st === 'play' || menuOpen)) return;
+  menuOpen = !menuOpen; menuIdx = 0;
+  if (UI) { try { if (menuOpen) UI.pausarJogo(); else UI.continuarJogo(); } catch (err) {} }
+}
+try {
+  var menuBtn = document.getElementById('menubtn');
+  if (menuBtn) menuBtn.addEventListener('pointerdown', function (e) { e.preventDefault(); gestoAudio(); alternarMenu(); });
+} catch (e) {}
+// Fullscreen na paisagem no 1º gesto (mobile); desktop ignora sem erro.
+var telaCheiaTentada = false;
+function tentarFullscreen() {
+  if (telaCheiaTentada) return;
+  telaCheiaTentada = true;
+  try {
+    if (document.documentElement && document.documentElement.requestFullscreen) {
+      var p = document.documentElement.requestFullscreen();
+      if (p && typeof p.catch === 'function') p.catch(function () {});
+    }
+  } catch (e) {}
+}
+try { document.addEventListener('pointerdown', function () { tentarFullscreen(); }, { capture: true }); } catch (e) {}
+// Gamepad (padrão: DualShock/Xbox/genéricos no Chrome): A=0, B=1, X/Y=2/3,
+// Start=9 pausa, direcional 12–15 + analógico. Polling com borda de subida.
+var padPrev = [];
+function lerGamepad() {
+  var pads = null;
+  try {
+    if (typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
+    pads = navigator.getGamepads();
+  } catch (e) { return; }
+  if (!pads) return;
+  var gp = null;
+  for (var i = 0; i < pads.length; i++) if (pads[i] && pads[i].connected) { gp = pads[i]; break; }
+  if (!gp) return;
+  var b = function (n) { try { return !!(gp.buttons[n] && gp.buttons[n].pressed); } catch (e) { return false; } };
+  var eixo = function (n) { try { var v = gp.axes[n] || 0; return Math.abs(v) > 0.35 ? v : 0; } catch (e) { return 0; } };
+  var ax = eixo(0) + (b(15) ? 1 : 0) - (b(14) ? 1 : 0);
+  var ay = eixo(1) + (b(13) ? 1 : 0) - (b(12) ? 1 : 0);
+  K.r = ax > 0.3 ? 1 : 0; K.l = ax < -0.3 ? 1 : 0;
+  K.d = ay > 0.3 ? 1 : 0; K.u = ay < -0.3 ? 1 : 0;
+  var beira = function (n) { var agora = b(n), antes = !!padPrev[n]; padPrev[n] = agora; return agora && !antes; };
+  if (beira(0)) act('a');
+  if (beira(1)) act('b');
+  if (beira(2) || beira(3)) act('c');
+  if (beira(9)) { gestoAudio(); alternarMenu(); }
+}
 if (cv && typeof cv.addEventListener === 'function') cv.addEventListener('pointerdown', function () { if (st !== 'play' || menuOpen) act('a'); });
 var kk = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
 var ka = { KeyZ: 'a', KeyJ: 'a', Space: 'a', Enter: 'a', KeyX: 'b', KeyK: 'b', KeyC: 'c', KeyL: 'c' };
@@ -1263,8 +1370,7 @@ addEventListener('keydown', function (e) {
   if (menuOpen && (e.code === 'ArrowUp' || e.code === 'KeyW')) { menuIdx = (menuIdx + 2) % 3; e.preventDefault(); return; }
   if (menuOpen && (e.code === 'ArrowDown' || e.code === 'KeyS')) { menuIdx = (menuIdx + 1) % 3; e.preventDefault(); return; }
   if ((e.code === 'KeyP' || e.code === 'Escape') && (st === 'play' || menuOpen)) {
-    menuOpen = !menuOpen; menuIdx = 0;
-    if (UI) { try { if (menuOpen) UI.pausarJogo(); else UI.continuarJogo(); } catch (err) {} }
+    alternarMenu();
     e.preventDefault(); return;
   }
   if (st === 'talk' && (e.code === 'ArrowUp' || e.code === 'KeyW')) { if (!moverSelecaoDialogo(-1)) {} e.preventDefault(); return; }

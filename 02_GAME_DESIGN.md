@@ -23,15 +23,20 @@
 | Duração | 1–2 h |
 
 ## 3. Controles
-| Ação | Toque | Teclado |
-|---|---|---|
-| Mover | D-pad (esq.) | Setas / WASD |
-| **A** — espada / interagir / avançar diálogo | botão A | Z, J, Espaço, Enter |
-| **B** — esquiva (dash com invulnerabilidade) | botão B | X, K |
-| **C** — magia de Lumi (projétil) | botão C | C, L |
-| Avançar diálogo / telas | tocar na tela ou A | — |
+| Ação | Toque | Teclado | Gamepad padrão |
+|---|---|---|---|
+| Mover (8 direções) | D-pad vetorial (arrasto) | Setas / WASD | Analógico / direcional |
+| **A** — espada / interagir / avançar diálogo | botão A | Z, J, Espaço, Enter | A (botão 0) |
+| **B** — esquiva (dash com invulnerabilidade) | botão B | X, K | B (botão 1) |
+| **C** — magia de Lumi (projétil) | botão C | C, L | X/Y (botões 2/3) |
+| Pausa / menu | botão ☰ | P / Esc | Start (botão 9) |
+| Avançar diálogo / telas | tocar na tela ou A | — | A |
 
-Regras de UX mobile: botões ≥ 50 px; `touch-action:none`; sem zoom/scroll; reagir a `pointercancel`; zerar direções no `blur`.
+Regras de UX mobile: botões ≥ 64 px; `touch-action:none`; sem zoom/scroll; reagir a `pointercancel`; zerar direções no `blur`.
+Apresentação (F2.5, branch `exp/f2.5-apresentacao`): paisagem fullscreen com controles
+translúcidos sobrepostos (D-pad à esquerda, A/B/C à direita, ☰ no topo); overlay some
+em título/diálogo/menus; retrato mantém barra opaca embaixo (fallback). Fullscreen
+tentado no 1º gesto (com `try/catch`; iOS ignora sem erro).
 
 ## 4. Combate (valores atuais do Cap. 1 — ver `03_ARCHITECTURE.md`)
 - **Vida do jogador:** 8 pontos (4 corações de 2). Dano padrão 1. Invulnerabilidade 60 frames após dano. Knockback.

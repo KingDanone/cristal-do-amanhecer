@@ -1,0 +1,51 @@
+/* jogo.css — F2.5 experimental: casca fullscreen + controles sobrepostos.
+ * Um único conjunto de controles; o CSS reposiciona por orientação:
+ * - paisagem: canvas 3:2 centralizado, controles translúcidos por cima;
+ * - retrato: canvas no topo, barra de controles opaca embaixo (fallback).
+ * Alvos de toque >= 64px. Sem zoom/scroll (touch-action:none). */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none}
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:monospace;color:#fff;overscroll-behavior:none}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#000;
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+#c{image-rendering:pixelated;background:#000;display:block;aspect-ratio:3/2}
+#touch{position:absolute;inset:0;pointer-events:none;z-index:5}
+#touch>*{pointer-events:auto}
+#stage.ocultar-touch #touch{display:none}
+#dzone{position:absolute;display:flex;align-items:center;justify-content:center}
+#dbase{border:2px solid rgba(200,200,220,.55);border-radius:50%;background:rgba(40,40,60,.30);
+  display:flex;align-items:center;justify-content:center}
+#dstick{border-radius:50%;background:rgba(160,160,190,.35);color:rgba(230,230,245,.8);
+  display:flex;align-items:center;justify-content:center;font-style:normal}
+#btns{position:absolute;display:flex;align-items:flex-end;gap:2.5vmin}
+.b{display:flex;align-items:center;justify-content:center;font-style:normal;font-weight:bold;
+  border:2px solid rgba(200,200,220,.6);border-radius:50%;background:rgba(40,40,60,.30);color:#dde}
+.b.on{background:rgba(120,120,190,.55)}
+.abtn{width:max(64px,13vmin);height:max(64px,13vmin);font-size:max(20px,4vmin)}
+.abtn.big{width:max(76px,16vmin);height:max(76px,16vmin);font-size:max(24px,5vmin)}
+#menubtn{position:absolute;display:flex;align-items:center;justify-content:center;
+  width:max(48px,9vmin);height:max(48px,9vmin);border-radius:12px;
+  border:2px solid rgba(200,200,220,.5);background:rgba(40,40,60,.30);color:#dde;
+  font-size:max(18px,3.6vmin)}
+/* ---- paisagem: jogo manda, controles flutuam por cima ---- */
+@media (orientation:landscape){
+  #stage{flex-direction:row}
+  #c{width:min(100vw - 8px,calc((100dvh - 8px)*1.5));height:auto;max-height:100dvh}
+  #dzone{left:4vmin;bottom:6vmin}
+  #dbase{width:max(120px,30vmin);height:max(120px,30vmin)}
+  #dstick{width:34%;height:34%;font-size:max(22px,5vmin)}
+  #btns{right:4vmin;bottom:6vmin}
+  #menubtn{top:calc(2vmin + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%)}
+  #touch{opacity:.62}
+}
+/* ---- retrato: fallback clássico, barra opaca embaixo ---- */
+@media (orientation:portrait){
+  #stage{flex-direction:column;justify-content:center}
+  #c{width:100vw;height:auto}
+  #touch{position:static;opacity:1;display:flex;align-items:center;justify-content:space-between;
+    width:100%;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:#111;pointer-events:auto}
+  #dzone{position:static}
+  #dbase{width:150px;height:150px;background:rgba(51,51,68,.9)}
+  #dstick{width:52px;height:52px;font-size:24px}
+  #btns{position:static}
+  #menubtn{position:static;transform:none}
+}

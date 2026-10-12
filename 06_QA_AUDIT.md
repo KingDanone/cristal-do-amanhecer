@@ -160,7 +160,27 @@ Roteiro no bundle F2 (Chromium MCP, teclado sintético, HP disciplinado p/ waits
 Bugs do ciclo (D-21): **B8** (clobber em `irParaValdora`), **B9** (`hpMax` no save), **A21** (`esconderijo` sem registro), colisão `darius_left`, objetivo da arena2.
 Lições de harness (sem impacto no jogo): intervalos ≥300 ms (recuperação do golpe engole teclas); curar (`P.hp`+`inv`) antes de waits em áreas com inimigos; mortes em teletransporte cego viram `over` (retry provado no processo).
 
+### Auditoria de navegador F2.5 experimental (branch `exp/f2.5-apresentacao`) — 2026-10-12, PASS
+Roteiro (Chromium MCP; paisagem 844×390 + retrato 390×700):
+
+| # | Item | Evidência/resultado |
+|---|---|---|
+| BC-X1 | Shell novo carrega sem erros | console 0 msgs; `#dzone`, 3×`[data-a]`, `#menubtn` presentes |
+| BC-X2 | Paisagem: jogo centralizado + overlay translúcido | `01-landscape-play.png`; canvas 573px; opacidade .62; A=106px |
+| BC-X3 | D-pad vetorial: direita + diagonal normalizada + soltar para | dx 33; diag 23.3/23.3; parado após soltar |
+| BC-X4 | Botão ☰ pausa/retoma | `estaPausado` true→false |
+| BC-X5 | Overlay some no diálogo e volta depois | classe `ocultar-touch`; `02-landscape-dialogo.png` limpo |
+| BC-X6 | Gamepad: API existe, poll sem controle não move nem quebra | `dx=0`, sem throw (hardware real pendente) |
+| BC-X7 | Retrato: barra opaca embaixo, canvas no topo | `03-portrait.png` |
+| BC-X8 | Fontes curtas maiores sem quebrar wrap | objetivo 8px, título 10px; corpo do diálogo mantido 8px (caixa 216px/4 linhas) |
+
+Impossíveis (NÃO aprovados): gamepad com hardware real (DualShock/Xbox/genérico);
+fullscreen real em celular (headless não valida); gesto multitoque simultâneo
+(D-pad + A ao mesmo tempo) com dedos reais; iOS Safari.
+
 Evidências desta rodada: `evidence/f0-browser/01..07` (+ variantes `01b`, `04`, `06`).
+Evidências F2.5 (branch): `evidence/exp-f2.5/01-landscape-play.png`,
+`02-landscape-dialogo.png`, `03-portrait.png`.
 
 ## Log de runs
 | Data | Comando | Resultado |
@@ -179,3 +199,4 @@ Evidências desta rodada: `evidence/f0-browser/01..07` (+ variantes `01b`, `04`,
 | 2026-10-12 | `sh tools/validate.sh` (F2: build ~170 KB + smoke 40/40 + audit 21/21) | VALIDATE PASS |
 | 2026-10-12 | Browser MCP Chromium F2 rodada 1 (BC-F2) | **FAIL** — achou B8 (clobber `irParaValdora`), colisão `darius_left`, placa? não — baú/placa ok; + B9 (`hpMax`), A21 (`esconderijo`), objetivo arena2 |
 | 2026-10-12 | Fixes + rodada 2 (BC-F2-01..15, evidências 01..06) | **PASS tudo; console 0 msgs** |
+| 2026-10-12 | Browser MCP Chromium F2.5 (branch `exp/f2.5-apresentacao`, BC-X1..X8) | **PASS tudo; console 0 msgs** |

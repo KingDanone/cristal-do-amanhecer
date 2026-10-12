@@ -148,9 +148,9 @@ t('A06 localStorage sempre em try/catch', lsOk, lsBad || 'storage fora de try');
 t('A07 touch-action:none + viewport-fit=cover + user-scalable=no no dist',
   /touch-action:\s*none/.test(dist) && /viewport-fit=cover/.test(dist) && /user-scalable=no/.test(dist),
   'shell sem travas mobile');
-// A08: botões ≥50px
-t('A08 botões ação ≥50px', /repeat\(3,52px\)/.test(dist) && /width:50px/.test(dist),
-  'D-pad/A/B/C pequenos demais');
+// A08: botões ≥56px (F2.5: overlay com mínimos em max(64px,..)/max(76px,..))
+t('A08 botões ação ≥56px', /max\(64px/.test(dist) && /max\(76px/.test(dist) && /data-a="(a|b|c)"/.test(dist),
+  'botões pequenos demais ou sem data-a');
 // A09: sem debug em src (console.*)
 t('A09 sem console.log/debug em src', !/console\.(log|debug|trace)/.test(strippedJoined), 'remova debugs');
 // A10: todos os destinos de saída existem
@@ -418,6 +418,29 @@ try {
   }
 } catch (e) { flgOk = false; flgBad = String(e.message); }
 t('A21 flags usadas registradas em FLAG_DEFAULTS (save não descarta)', flgOk, flgBad);
+
+// A22: overlay F2.5 — some fora do jogo/pausa; gamepad blindado; D-pad vetorial
+let ovOk = true, ovBad = '';
+{
+  const mainCode = all.find(o => /main\.js$/.test(o.f));
+  const semComent = mainCode ? mainCode.code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1') : '';
+  const checks = [
+    [/ocultar-touch/, 'overlay sem regra de visibilidade'],
+    [/getElementById\(['"]dzone['"]\)/, 'zona do direcional ausente'],
+    [/pointermove/, 'sem arrasto no direcional'],
+    [/0\.25/, 'sem zona morta'],
+    [/getGamepads/, 'gamepad ausente'],
+    [/typeof navigator/, 'gamepad sem guarda'],
+    [/alternarMenu/, 'sem alternância de menu p/ botão'],
+    [/requestFullscreen/, 'sem tentativa de fullscreen'],
+  ];
+  for (const [re, msg] of checks) {
+    if (!re.test(semComent)) { ovOk = false; ovBad = msg; break; }
+  }
+  if (ovOk && !/orientation:\s*landscape/.test(dist)) { ovOk = false; ovBad = 'sem layout de paisagem'; }
+  if (ovOk && !/orientation:\s*portrait/.test(dist)) { ovOk = false; ovBad = 'sem fallback de retrato'; }
+}
+t('A22 overlay experimental íntegro (visibilidade+vetor+gamepad+layouts)', ovOk, ovBad);
 
 console.log('1..' + n);
 console.log(fail === 0 ? '# SEVERA PASS ' + n + '/' + n : '# SEVERA FAIL (' + fail + ' falhas)');
