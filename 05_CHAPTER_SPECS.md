@@ -92,6 +92,11 @@ Arena 15×10, contato a <22 px = 1 dano. Ciclo (frames a 60 Hz):
 - **Recompensa:** Fragmento Verde (`frag_green`, Lumi revela passagens) + +1 coração.
 - **Gancho:** Darius recebe a proposta do homem misterioso.
 - **Aceite:** cidade navegável, secundária completa e rastreada por `cat_found`.
+  **STATUS 2026-10-12: ENTREGUE E VERIFICADO** (validate + audit 21/21 + smoke 40/40
+  + browser BC-F2-01..BC-F2-15, evidências em `evidence/f2-browser/01..06`):
+  entrada pelo fim do Cap.1, NPCs/refugiados, Darius, gato→esgotos→baú
+  (`cat_found`), Cavaleiro Corrompido (tel 35f) com fala do rei, Fragmento Verde
+  + Lâmina da Guarda + coração, proposta com volta à praça. Bugs B8/B9 corrigidos.
 
 ## Cap. 3 — As Ruínas do Norte (esqueleto, ver F3)
 

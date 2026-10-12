@@ -79,24 +79,27 @@ t('A02 dist <250KB', fs.existsSync(DIST) && Buffer.byteLength(dist, 'utf8') <= B
 // A03: diálogos ≤180 chars (dados + MVP embutido no main)
 let dialogOk = true, dialogBad = '';
 try {
-  const sandbox = { globalThis: {} };
+  const sandbox = { console };
   vm.createContext(sandbox);
   for (const o of all) {
-    if (/dialogs_f1|DIALOGS/.test(o.f) || /DIALOGS_F1\s*=/.test(o.code)) {
+    if (/src\/data\//.test(o.f.replace(/\\/g, '/'))) {
       try { vm.runInContext(o.code, sandbox, { timeout: 1000 }); } catch (e) {}
     }
   }
-  const D = sandbox.DIALOGS_F1 || sandbox.globalThis.DIALOGS_F1;
-  if (D) for (const k of Object.keys(D)) {
-    for (const sp of (D[k].speakers || [])) {
+  var TODOS_DLG = {};
+  for (const k of Object.keys(sandbox)) if (/^DIALOGS_/.test(k) && sandbox[k]) Object.assign(TODOS_DLG, sandbox[k]);
+  if (!Object.keys(TODOS_DLG).length) { dialogOk = false; dialogBad = 'DIALOGS_* ausentes'; }
+  else for (const k of Object.keys(TODOS_DLG)) {
+    for (const sp of (TODOS_DLG[k].speakers || [])) {
       const txt = sp[1] || '';
       if (txt.length > 180) { dialogOk = false; dialogBad = k + ':' + txt.length; break; }
     }
-    for (const ch of (D[k].choices || [])) {
+    if (!dialogOk) break;
+    for (const ch of (TODOS_DLG[k].choices || [])) {
       for (const rp of (ch.reply || [])) if ((rp[1] || '').length > 180) { dialogOk = false; dialogBad = k + '.reply'; }
     }
+    if (!dialogOk) break;
   }
-  else { dialogOk = false; dialogBad = 'DIALOGS_F1 ausente'; }
 } catch (e) { dialogOk = false; dialogBad = String(e.message); }
 t('A03 todas as caixas ≤180 chars', dialogOk, dialogBad);
 // A04: telegraph ≥30f em todo padrão de chefe/inimigo novo
@@ -153,7 +156,7 @@ t('A09 sem console.log/debug em src', !/console\.(log|debug|trace)/.test(strippe
 // A10: todos os destinos de saída existem
 let exitOk = true, exitBad = '';
 try {
-  const ids = new Set(['brisamar', 'forest', 'ruin_entry', 'boss', 'arena', 'floresta']);
+  const ids = new Set(['brisamar', 'forest', 'ruin_entry', 'ruin', 'boss', 'arena', 'arena2', 'floresta', 'valdora', 'esgoto']);
   for (const o of all) {
     for (const m of o.code.matchAll(/to:\s*["']([\w-]+)["']/g)) {
       if (!ids.has(m[1])) { exitOk = false; exitBad = o.f + ' → ' + m[1]; break; }
@@ -201,11 +204,15 @@ t('A13 typewriter só no passo fixo (nada no render)', twOk, twBad);
 // A14: choices com 2–3 opções
 let chOk = true;
 try {
-  const sandbox = { globalThis: {} };
+  const sandbox = { console };
   vm.createContext(sandbox);
-  const dc = all.find(o => /dialogs_f1/.test(o.f));
-  if (dc) vm.runInContext(dc.code, sandbox, { timeout: 1000 });
-  const D = sandbox.DIALOGS_F1 || sandbox.globalThis.DIALOGS_F1 || {};
+  for (const o of all) {
+    if (/src\/data\//.test(o.f.replace(/\\/g, '/'))) {
+      try { vm.runInContext(o.code, sandbox, { timeout: 1000 }); } catch (e) {}
+    }
+  }
+  const D = {};
+  for (const k of Object.keys(sandbox)) if (/^DIALOGS_/.test(k) && sandbox[k]) Object.assign(D, sandbox[k]);
   for (const k of Object.keys(D)) {
     const c = D[k].choices;
     if (c && (c.length < 2 || c.length > 3)) { chOk = false; break; }
@@ -213,8 +220,8 @@ try {
 } catch (e) { chOk = false; }
 t('A14 choices com 2–3 opções', chOk, 'choice fora do padrão');
 // A15: chefe 24HP / jogador 8HP preservados
-t('A15 HP canônicos (jogador 8, guardião 24)',
-  /hp:\s*24|vidaMaxima:\s*24|hp=8|hp:\s*8|MAX_HP\s*=\s*8/.test(joined),
+t('A15 HP canônicos (jogador 8→10 no Cap.2, guardião 24, cavaleiro 28)',
+  /hp:\s*24|vidaMaxima:\s*24|hp:\s*28|hpMax:\s*28|MAX_HP\s*=\s*10/.test(joined),
   'valores de combate alterados sem decisão');
 
 // ---- A16/A17/A18: conteúdo F1 (mapas + diálogos) ----
@@ -223,7 +230,7 @@ t('A15 HP canônicos (jogador 8, guardião 24)',
 function defsConteudo() {
   const sb = { console };
   vm.createContext(sb);
-  for (const arq of ['maps/brisamar.js', 'maps/forest.js', 'maps/ruin_entry.js', 'data/dialogs_f1.js']) {
+  for (const arq of ['maps/brisamar.js', 'maps/forest.js', 'maps/ruin_entry.js', 'maps/valdora.js', 'maps/esgoto.js', 'data/dialogs_f1.js', 'data/dialogs_f2.js']) {
     vm.runInContext(read(path.join(SRC, arq)), sb, { timeout: 1000 });
   }
   return sb;
@@ -282,6 +289,33 @@ if (DEFS) {
         if (!pertoDe(alcFo, qx, qy) && !alcFo.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'forest ' + qn; break; }
       }
     }
+    // Valdora a partir de entrada_sul(10,13)
+    if (bfsOk) {
+      const va = DEFS.MAP_VALDORA;
+      const bloqVa = va.npcs.filter(n => !(n.id === 'estranho')).map(n => [n.tx, n.ty])
+        .concat(va.objects.filter(o => o.type === 'sign' || o.type === 'dummy' || o.type === 'bau' || o.type === 'passagem' || o.type === 'gato').map(o => [o.tx, o.ty]));
+      const alcVa = bfs(va, 10, 13, bloqVa);
+      for (const n of va.npcs) {
+        if (n.id === 'estranho') continue; // cena pós-chefe, validada no browser
+        if (!pertoDe(alcVa, n.tx, n.ty)) { bfsOk = false; bfsBad = 'valdora npc ' + n.id; break; }
+      }
+      if (bfsOk) {
+        const alvosVa = [[11, 2, 'porta-templo'], [12, 2, 'porta-templo2'], [19, 12, 'grade-esgoto'], [2, 9, 'gato'], [15, 10, 'bau-esgoto']];
+        for (const [qx, qy, qn] of alvosVa) {
+          if (!pertoDe(alcVa, qx, qy) && !alcVa.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'valdora ' + qn; break; }
+        }
+      }
+    }
+    // Esgoto a partir de entrada(2,10)
+    if (bfsOk) {
+      const es = DEFS.MAP_ESGOTO;
+      const bloqEs = es.objects.filter(o => o.type === 'bau' || o.type === 'passagem').map(o => [o.tx, o.ty]);
+      const alcEs = bfs(es, 2, 10, bloqEs);
+      const alvosEs = [[15, 10, 'bau'], [15, 1, 'passagem'], [1, 10, 'saída'], [4, 3, 'slime1'], [12, 7, 'slime2'], [5, 8, 'slime3']];
+      for (const [qx, qy, qn] of alvosEs) {
+        if (!pertoDe(alcEs, qx, qy) && !alcEs.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'esgoto ' + qn; break; }
+      }
+    }
     // Ruína a partir de entry(7,8)
     if (bfsOk) {
       const ru = DEFS.MAP_RUIN_ENTRY;
@@ -299,12 +333,13 @@ t('A16 BFS: spawns alcançam NPCs/objetos/saídas (anti soft-lock)', bfsOk, bfsB
 let refOk = true, refBad = '';
 if (DEFS && DEFS.DIALOGS_F1) {
   try {
-    const D = DEFS.DIALOGS_F1;
+    const D = {};
+    for (const k of Object.keys(DEFS)) if (/^DIALOGS_/.test(k) && DEFS[k]) Object.assign(D, DEFS[k]);
     const refs = [];
-    for (const def of [DEFS.MAP_BRISAMAR, DEFS.MAP_FOREST, DEFS.MAP_RUIN_ENTRY]) {
+    for (const def of [DEFS.MAP_BRISAMAR, DEFS.MAP_FOREST, DEFS.MAP_RUIN_ENTRY, DEFS.MAP_VALDORA, DEFS.MAP_ESGOTO]) {
       if (!def) continue;
-      for (const n of (def.npcs || [])) { if (n.dialogs) { refs.push(n.dialogs.first); if (n.dialogs.repeat) refs.push(n.dialogs.repeat); } }
-      for (const o of (def.objects || [])) if (o.dialog) refs.push(o.dialog);
+      for (const n of (def.npcs || [])) { if (n.dialogs) { refs.push(n.dialogs.first); if (n.dialogs.repeat) refs.push(n.dialogs.repeat); } if (n.reqDialog) refs.push(n.reqDialog); }
+      for (const o of (def.objects || [])) { if (o.dialog) refs.push(o.dialog); if (o.reqDialog) refs.push(o.reqDialog); }
       if (def.sign && def.sign.dialog) refs.push(def.sign.dialog);
       for (const s of (def.exits || [])) { if (s.leaveDialog) refs.push(s.leaveDialog); if (s.enterDialog) refs.push(s.enterDialog); }
     }
@@ -337,6 +372,52 @@ if (DEFS && DEFS.MAP_FOREST) {
   } catch (e) { lcgOk = false; lcgBad = String(e.message); }
 } else { lcgOk = false; lcgBad = 'MAP_FOREST não carregou'; }
 t('A18 floresta idêntica ao LCG canônico', lcgOk, lcgBad);
+
+// A20: dimensões dos mapas (linhas × colunas batem com w/h)
+let dimOk = true, dimBad = '';
+if (DEFS) {
+  try {
+    for (const [nome, def] of [['brisamar', DEFS.MAP_BRISAMAR], ['forest', DEFS.MAP_FOREST], ['ruin_entry', DEFS.MAP_RUIN_ENTRY], ['valdora', DEFS.MAP_VALDORA], ['esgoto', DEFS.MAP_ESGOTO]]) {
+      if (!def || !Array.isArray(def.tiles) || def.tiles.length !== def.h) { dimOk = false; dimBad = nome + ': altura'; break; }
+      for (let j = 0; j < def.tiles.length; j++) {
+        if (def.tiles[j].length !== def.w) { dimOk = false; dimBad = nome + ' linha ' + j; break; }
+      }
+      if (!dimOk) break;
+    }
+  } catch (e) { dimOk = false; dimBad = String(e.message); }
+} else { dimOk = false; dimBad = 'defs não carregaram'; }
+t('A20 mapas com dimensões coerentes (w/h × tiles)', dimOk, dimBad);
+
+// A21: toda flag gravada (flagsSet dos diálogos + gravarFlag no main)
+// existe em FLAG_DEFAULTS — senão o save a descarta em silêncio.
+let flgOk = true, flgBad = '';
+try {
+  const sb = { console };
+  vm.createContext(sb);
+  vm.runInContext(read(path.join(SRC, 'core', 'flags.js')), sb, { timeout: 1000 });
+  const conhecidas = (sb.Game && sb.Game.FLAG_DEFAULTS) || {};
+  const usadas = new Set();
+  const sb2 = { console };
+  vm.createContext(sb2);
+  for (const arq of ['data/dialogs_f1.js', 'data/dialogs_f2.js']) {
+    vm.runInContext(read(path.join(SRC, arq)), sb2, { timeout: 1000 });
+  }
+  for (const k of Object.keys(sb2)) {
+    if (/^DIALOGS_/.test(k) && sb2[k]) {
+      for (const id of Object.keys(sb2[k])) {
+        const e = sb2[k][id];
+        for (const f of Object.keys(e.flagsSet || {})) usadas.add(f);
+        for (const c of (e.choices || [])) for (const f of Object.keys(c.flagsSet || {})) usadas.add(f);
+      }
+    }
+  }
+  const mainCode = stripCode(read(path.join(SRC, 'main.js')));
+  for (const m of mainCode.matchAll(/gravarFlag\(\s*['"]([\w-]+)['"]/g)) usadas.add(m[1]);
+  for (const f of usadas) {
+    if (!Object.prototype.hasOwnProperty.call(conhecidas, f)) { flgOk = false; flgBad = 'flag sem registro: ' + f; break; }
+  }
+} catch (e) { flgOk = false; flgBad = String(e.message); }
+t('A21 flags usadas registradas em FLAG_DEFAULTS (save não descarta)', flgOk, flgBad);
 
 console.log('1..' + n);
 console.log(fail === 0 ? '# SEVERA PASS ' + n + '/' + n : '# SEVERA FAIL (' + fail + ' falhas)');

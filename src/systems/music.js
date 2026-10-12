@@ -37,6 +37,12 @@
   var BAIXO_FLORESTA = seq('0,6 0,6 1,6 4,6');
   var MELODIA_RUINAS = seq('0,4 -1,2 3,2 2,2 -1,2 1,4 -1,2 0,6');
   var BAIXO_RUINAS = seq('0,12 5,12');
+  var MELODIA_VALDORA = seq(
+    '0,1 2,1 4,1 5,1 7,2 5,1 4,1 2,1 0,2 2,2 4,2 5,2 7,2 9,2 7,2 5,1');
+  var BAIXO_VALDORA = seq('0,2 0,2 4,2 3,2 0,2 0,2 4,2 4,2');
+  var PERCUSSAO_VALDORA = { passoCiclo: 8, eventos: [
+    [2, 'chimbal'], [4, 'bumbo'], [6, 'chimbal']
+  ] };
   var MELODIA_CHEFE = seq(
     '0,1 0,1 1,1 0,1 3,1 3,1 1,1 0,1 0,1 0,1 1,1 0,1 5,1 4,1 3,1 7,1');
   var BAIXO_CHEFE = seq('0,1 0,1 0,1 0,1 0,1 0,1 3,1 1,1');
@@ -55,7 +61,8 @@
     forest_theme: criarTema(88, 3, ESCALA_MENOR, 69, 0.42, 0.42, MELODIA_BRISAMAR, BAIXO_FLORESTA),
     ruin_theme: criarTema(70, 3, ESCALA_MENOR, 57, 0.4, 0.36, MELODIA_RUINAS, BAIXO_RUINAS),
     boss_theme: criarTema(152, 4, ESCALA_MENOR, 64, 0.46, 0.4, MELODIA_CHEFE, BAIXO_CHEFE, PERCUSSAO_CHEFE),
-    title_theme: criarTema(78, 3, ESCALA_MAIOR, 72, 0.42, 0.35, MELODIA_BRISAMAR, BAIXO_TITULO)
+    title_theme: criarTema(78, 3, ESCALA_MAIOR, 72, 0.42, 0.35, MELODIA_BRISAMAR, BAIXO_TITULO),
+    valdora_theme: criarTema(126, 4, ESCALA_MAIOR, 72, 0.44, 0.38, MELODIA_VALDORA, BAIXO_VALDORA, PERCUSSAO_VALDORA)
   };
 
   var GANHO_DEDICADO = 0.02; // ~40% do mestre dos SFX — anti-clipping

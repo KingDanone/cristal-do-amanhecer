@@ -24,6 +24,12 @@ var G = (typeof Game !== 'undefined') ? Game : null;
 var Wd = (typeof World !== 'undefined') ? World : null;
 var Sv = (typeof SaveSystem !== 'undefined') ? SaveSystem : null;
 var DIALOGS = (typeof DIALOGS_F1 !== 'undefined') ? DIALOGS_F1 : ((typeof globalThis !== 'undefined' && globalThis.DIALOGS_F1) || null);
+var DIALOGS2 = (typeof DIALOGS_F2 !== 'undefined') ? DIALOGS_F2 : ((typeof globalThis !== 'undefined' && globalThis.DIALOGS_F2) || null);
+function buscarDialogo(id) {
+  if (DIALOGS && DIALOGS[id]) return DIALOGS[id];
+  if (DIALOGS2 && DIALOGS2[id]) return DIALOGS2[id];
+  return null;
+}
 
 // ---- estado ----
 var AC = null, seed = 7, st = 'title', P = null, E = [], S = [], RT = [], items = [], B = null;
@@ -107,8 +113,8 @@ function aplicarFlagsDialogo(flagsSet) {
   syncObj();
 }
 function playDialogId(id, cb) {
-  if (DIALOGS && DIALOGS[id]) {
-    var d = DIALOGS[id];
+  var d = buscarDialogo(id);
+  if (d) {
     say(d.speakers, function () {
       aplicarFlagsDialogo(d.flagsSet);
       if (d.choices && d.choices.length >= 2 && Dlg && typeof Dlg.choice === 'function') {
@@ -190,10 +196,14 @@ function defMapa(id) {
     if (id === 'brisamar' && typeof MAP_BRISAMAR !== 'undefined') return MAP_BRISAMAR;
     if (id === 'forest' && typeof MAP_FOREST !== 'undefined') return MAP_FOREST;
     if (id === 'ruin_entry' && typeof MAP_RUIN_ENTRY !== 'undefined') return MAP_RUIN_ENTRY;
+    if (id === 'valdora' && typeof MAP_VALDORA !== 'undefined') return MAP_VALDORA;
+    if (id === 'esgoto' && typeof MAP_ESGOTO !== 'undefined') return MAP_ESGOTO;
     if (typeof globalThis !== 'undefined') {
       if (id === 'brisamar' && globalThis.MAP_BRISAMAR) return globalThis.MAP_BRISAMAR;
       if (id === 'forest' && globalThis.MAP_FOREST) return globalThis.MAP_FOREST;
       if (id === 'ruin_entry' && globalThis.MAP_RUIN_ENTRY) return globalThis.MAP_RUIN_ENTRY;
+      if (id === 'valdora' && globalThis.MAP_VALDORA) return globalThis.MAP_VALDORA;
+      if (id === 'esgoto' && globalThis.MAP_ESGOTO) return globalThis.MAP_ESGOTO;
     }
   } catch (e) {}
   return null;
@@ -204,20 +214,26 @@ function statsInimigo(kind, def) {
   return { hp: 2, pursueRadius: 90, contactDamage: 1, heartDrop: 0.3, telegraph: 36, rest: 50, ai: 'swoop' };
 }
 function criarJogador() {
-  return { x: 3 * T, y: 16 * T, s: 10, d: 1, hp: 8, inv: 0, at: 0, dash: 0, cd: 0, kx: 0, ky: 0 };
+  return { x: 3 * T, y: 16 * T, s: 10, d: 1, hp: 8, hpMax: 8, inv: 0, at: 0, dash: 0, cd: 0, kx: 0, ky: 0 };
 }
+function danoEspada() { try { if (G && G.flags && G.flags.espada_guarda) return 3; } catch (e) {} return 2; }
 function marcarMapaAtual(id) {
   try { if (Wd) Wd.currentId = id; } catch (e) {}
 }
-function montarArena() {
+function montarArena(qual) {
   inBoss = true; MW = 15; MH = 10; M = [];
   for (var j = 0; j < MH; j++) { M[j] = []; for (var i = 0; i < MW; i++) M[j][i] = (i < 1 || j < 1 || i > MW - 2 || j > MH - 2) ? '#' : '.'; }
-  mapaTileset = 'arena'; solides = { '#': true, '.': false };
+  mapaTileset = qual === 'arena2' ? 'arena2' : 'arena'; solides = { '#': true, '.': false };
   obstaculos = []; npcs = []; objetos = []; saidas = []; raizesDeco = []; runes = [];
   pedraAzul = null; bush = null;
   E = []; items = []; S = []; RT = [];
-  P.x = 7 * T; P.y = 8 * T; P.hp = 8; P.inv = 60; P.kx = 0; P.ky = 0;
-  B = { x: 106, y: 28, s: 28, hp: 24, m: 'walk', t: 90, fl: 0, dc: 0, end: 0, sw: -1 };
+  P.x = 7 * T; P.y = 8 * T; P.hp = P.hpMax || 8; P.inv = 60; P.kx = 0; P.ky = 0;
+  if (qual === 'arena2') {
+    // D-20: Cavaleiro Corrompido — investidas rápidas, rajada em cruz na fase 2.
+    B = { kind: 'cavaleiro', nome: 'Cavaleiro Corrompido', x: 106, y: 28, s: 28, hp: 28, hpMax: 28, m: 'walk', t: 70, fl: 0, dc: 0, end: 0, sw: -1, vx: 0, vy: 0 };
+  } else {
+    B = { kind: 'guardiao', nome: 'Guardião das Raízes', x: 106, y: 28, s: 28, hp: 24, hpMax: 24, m: 'walk', t: 90, fl: 0, dc: 0, end: 0, sw: -1 };
+  }
   if (Mus && typeof Mus.tocarTema === 'function') { try { Mus.tocarTema('boss_theme'); } catch (e) {} }
   espelharGlobals();
 }
@@ -225,12 +241,12 @@ function carregarMapa(id, spawnNome, opts) {
   var op = opts || {};
   var posicionar = op.posicionar !== false, ganchos = op.ganchos !== false;
   mapaId = id;
-  if (id === 'arena') {
+  if (id === 'arena' || id === 'arena2') {
     if (!P) P = criarJogador();
-    montarArena();
+    montarArena(id);
     saidaArmada = false;
-    marcarMapaAtual('arena');
-    if (ganchos) { try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena'); } catch (e) {} }
+    marcarMapaAtual(id);
+    if (ganchos) { try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange(id); } catch (e) {} }
     espelharGlobals();
     return true;
   }
@@ -248,11 +264,13 @@ function carregarMapa(id, spawnNome, opts) {
   pedraAzul = null; bush = null;
   E = []; items = []; S = []; RT = []; B = null;
   if (!P) P = criarJogador();
-  // NPCs (darius sai de cena após a despedida)
+  // NPCs (darius F1 sai após a despedida; darius/estranho F2 seguem a proposta)
   if (def.npcs) for (var ni = 0; ni < def.npcs.length; ni++) {
     var nd = def.npcs[ni];
-    if (nd.id === 'darius' && lerFlag('darius_left')) continue;
-    var npc = { id: nd.id, nome: nd.name, x: nd.tx * T + 3, y: nd.ty * T + 6, w: 10, h: 10, first: nd.dialogs.first, repeat: nd.dialogs.repeat || null };
+    if (nd.id === 'darius' && id === 'brisamar' && lerFlag('darius_left')) continue;
+    if (nd.id === 'darius' && id === 'valdora' && lerFlag('proposta_vista')) continue;
+    if (nd.id === 'estranho' && !(lerFlag('boss2_defeated') && !lerFlag('proposta_vista'))) continue;
+    var npc = { id: nd.id, nome: nd.name, x: nd.tx * T + 3, y: nd.ty * T + 6, w: 10, h: 10, first: nd.dialogs.first, repeat: nd.dialogs.repeat || null, reqFlag: nd.reqFlag || null, reqDialog: nd.reqDialog || null };
     npcs.push(npc);
     obstaculos.push({ x: npc.x, y: npc.y, w: 10, h: 10 });
   }
@@ -262,14 +280,21 @@ function carregarMapa(id, spawnNome, opts) {
     if (od.type === 'deco' && od.kind === 'darkroot') { raizesDeco.push({ tx: od.tx, ty: od.ty, phase: od.phase || 0 }); continue; }
     if (od.type === 'deco') continue;
     if (od.type === 'landmark' && od.kind === 'pedra_azul') { pedraAzul = { x: od.tx * T, y: od.ty * T, dialog: od.dialog }; continue; }
+    if (od.type === 'gato') {
+      if (lerFlag('gato_achado')) continue; // Miau já voltou para a dona
+      var gt = { tipo: 'gato', x: od.tx * T + 4, y: od.ty * T + 6, w: 8, h: 8, dialog: od.dialog || null, nome: od.name || 'Miau', reqFlag: od.reqFlag || null, reqDialog: od.reqDialog || null };
+      objetos.push(gt);
+      obstaculos.push({ x: gt.x, y: gt.y, w: 8, h: 8 });
+      continue;
+    }
     if (od.type === 'pickup' && od.kind === 'key') {
       if (lerFlag('bush_key_found')) continue;
       bush = { x: od.tx * T, y: od.ty * T, dialog: od.dialog };
       obstaculos.push({ x: bush.x, y: bush.y, w: T, h: T });
       continue;
     }
-    var ob2 = { tipo: od.type, x: od.tx * T, y: od.ty * T, w: T, h: T, dialog: od.dialog || null, nome: od.name || od.kind || od.type };
-    if (od.type === 'sign' || od.type === 'dummy') obstaculos.push({ x: ob2.x, y: ob2.y, w: T, h: T });
+    var ob2 = { tipo: od.type, x: od.tx * T, y: od.ty * T, w: T, h: T, dialog: od.dialog || null, nome: od.name || od.kind || od.type, reqFlag: od.reqFlag || null, reqDialog: od.reqDialog || null };
+    if (od.type === 'sign' || od.type === 'dummy' || od.type === 'bau' || od.type === 'passagem') obstaculos.push({ x: ob2.x, y: ob2.y, w: T, h: T });
     objetos.push(ob2);
   }
   if (def.sign) {
@@ -293,7 +318,7 @@ function carregarMapa(id, spawnNome, opts) {
   // saídas
   if (def.exits) for (var ei = 0; ei < def.exits.length; ei++) {
     var ed = def.exits[ei];
-    saidas.push({ tx: ed.tx, ty: ed.ty, w: ed.w || 1, h: ed.h || 1, to: ed.to, spawn: ed.spawn, req: ed.req || null, leaveDialog: ed.leaveDialog || null, enterDialog: ed.enterDialog || null });
+    saidas.push({ tx: ed.tx, ty: ed.ty, w: ed.w || 1, h: ed.h || 1, to: ed.to, spawn: ed.spawn, req: ed.req || null, reqMsg: ed.reqMsg || null, leaveDialog: ed.leaveDialog || null, enterDialog: ed.enterDialog || null });
   }
   // inimigos
   if (def.enemies) for (var ki = 0; ki < def.enemies.length; ki++) {
@@ -316,7 +341,11 @@ function carregarMapa(id, spawnNome, opts) {
   if (ganchos) {
     try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange(id); } catch (e) {}
     try {
-      if (typeof def.onEnter === 'function') def.onEnter({ flags: (G && G.flags) ? G.flags : {}, playDialog: function (d) { playDialogId(d); } });
+      if (typeof def.onEnter === 'function') def.onEnter({
+        flags: (G && G.flags) ? G.flags : {},
+        playDialog: function (d, cb) { playDialogId(d, cb); },
+        voltarPraca: function () { transicaoPara('valdora', 'praca'); }
+      });
     } catch (e) {}
     if (id === 'forest' && spawnNome === 'fromBrisamar' && !lerFlag('intro_floresta')) {
       gravarFlag('intro_floresta', true);
@@ -370,11 +399,12 @@ function continuarSalvo() {
     if (!Sv.loadGame()) return false;
     var id = 'forest';
     try {
+      var conhecidos = ['arena', 'arena2', 'brisamar', 'ruin_entry', 'forest', 'valdora', 'esgoto'];
       if (typeof World !== 'undefined' && World && World.maps && World.maps[desc.mapa]) id = desc.mapa;
-      else if (desc.mapa === 'arena' || desc.mapa === 'brisamar' || desc.mapa === 'ruin_entry' || desc.mapa === 'forest') id = desc.mapa;
+      else if (conhecidos.indexOf(desc.mapa) !== -1) id = desc.mapa;
     } catch (e) {}
-    if (id === 'arena') {
-      carregarMapa('arena', 'entrada', { posicionar: false, ganchos: false });
+    if (id === 'arena' || id === 'arena2') {
+      carregarMapa(id, 'entrada', { posicionar: false, ganchos: false });
       try {
         var pos = (Sv.collectSaveData) ? null : null;
         void pos;
@@ -390,19 +420,19 @@ function continuarSalvo() {
         items.push({ x: 23 * T + 3, y: 12 * T + 3, t: 'k' });
       }
     } catch (e) {}
-    marcarMapaAtual(inBoss ? 'arena' : mapaId);
-    try { if (Mus && typeof Mus.tocarTema === 'function') Mus.tocarTema(id === 'arena' ? 'boss_theme' : id === 'ruin_entry' ? 'ruin_theme' : id === 'brisamar' ? 'brisamar_theme' : 'forest_theme'); } catch (e) {}
+    marcarMapaAtual(inBoss ? mapaId : mapaId);
+    try { if (Mus && typeof Mus.tocarTema === 'function') Mus.tocarTema(id === 'arena' || id === 'arena2' ? 'boss_theme' : id === 'ruin_entry' ? 'ruin_theme' : id === 'brisamar' ? 'brisamar_theme' : id === 'valdora' ? 'valdora_theme' : 'forest_theme'); } catch (e) {}
     espelharGlobals();
     st = 'play';
     return true;
   } catch (e) { return false; }
 }
 function retry() {
-  P.hp = 8; P.inv = 60; P.kx = 0; P.ky = 0; menuOpen = false;
+  P.hp = P.hpMax || 8; P.inv = 60; P.kx = 0; P.ky = 0; menuOpen = false;
   if (UI && typeof UI.continuarJogo === 'function') { try { UI.continuarJogo(); } catch (e) {} }
-  if (inBoss || mapaId === 'arena') { carregarMapa('arena', 'entrada', { posicionar: true, ganchos: false }); }
+  if (inBoss || mapaId === 'arena' || mapaId === 'arena2') { carregarMapa(mapaId, 'entrada', { posicionar: true, ganchos: false }); }
   else {
-    var sp = mapaId === 'brisamar' ? 'home' : mapaId === 'ruin_entry' ? 'entry' : 'fromBrisamar';
+    var sp = mapaId === 'brisamar' ? 'home' : mapaId === 'ruin_entry' ? 'entry' : mapaId === 'valdora' ? 'entrada_sul' : mapaId === 'esgoto' ? 'entrada' : 'fromBrisamar';
     carregarMapa(mapaId || 'forest', sp, { posicionar: true, ganchos: false });
   }
   st = 'play';
@@ -418,8 +448,17 @@ function npcMaisProximo() {
   return melhor ? { alvo: melhor, dist: melhorD } : null;
 }
 function dialogParaNpc(n) {
-  var prim = (DIALOGS && DIALOGS[n.first]) ? DIALOGS[n.first] : null;
-  if (prim && flagsConcluidas(prim.flagsSet) && n.repeat && DIALOGS && DIALOGS[n.repeat]) return n.repeat;
+  if (n.reqFlag && !lerFlag(n.reqFlag) && n.reqDialog) return n.reqDialog;
+  // D-20: menina tem 3 estados (início → meio → fim → agradecimento).
+  if (n.id === 'menina') {
+    if (lerFlag('cat_found')) return 'menina_obrigada';
+    if (lerFlag('gato_achado')) return 'menina_fim';
+    var prim0 = buscarDialogo(n.first);
+    if (prim0 && flagsConcluidas(prim0.flagsSet)) return 'menina_meio';
+    return n.first;
+  }
+  var prim = buscarDialogo(n.first);
+  if (prim && flagsConcluidas(prim.flagsSet) && n.repeat && buscarDialogo(n.repeat)) return n.repeat;
   return n.first;
 }
 function objetoMaisProximo() {
@@ -443,6 +482,27 @@ function usarObjeto(o) {
     playDialogId(o.dialog || 'orin_tutorial'); return true;
   }
   if (o.tipo === 'stall') { showMsg('Cheiro de pão doce e tinta fresca. É dia de festa!'); return true; }
+  if (o.tipo === 'gato') {
+    if (o.reqFlag && !lerFlag(o.reqFlag)) { playDialogId(o.reqDialog || 'gato_hint'); return true; }
+    playDialogId(o.dialog || 'gato_achado_dlg');
+    return true;
+  }
+  if (o.tipo === 'grade') { showMsg('Uma grade de ferro sobre o esgoto. Há um brilho lá embaixo...'); return true; }
+  if (o.tipo === 'bau') {
+    if (lerFlag('bau_esgoto')) { showMsg('O baú está vazio.'); return true; }
+    playDialogId(o.dialog || 'bau');
+    return true;
+  }
+  if (o.tipo === 'passagem') {
+    if (!lerFlag('frag_green')) { showMsg('Parede sólida... mas Lumi sente algo estranho.'); return true; }
+    if (lerFlag('esconderijo')) { showMsg('O esconderijo está vazio.'); return true; }
+    gravarFlag('esconderijo', true);
+    items.push({ x: o.x + 1, y: o.y + 3, t: 'h' });
+    items.push({ x: o.x + 8, y: o.y + 3, t: 'h' });
+    showMsg('Passagem secreta! Corações à vista.');
+    playSnd(1000, 0.3, 'triangle');
+    return true;
+  }
   return false;
 }
 function temEspada() { return lerFlag('got_sword'); }
@@ -534,7 +594,10 @@ function act(a) {
     return;
   }
   if (st === 'cena') { cenaT = 160; return; }
-  if (st === 'end') { begin(); return; }
+  if (st === 'end') {
+    if (a === 'c') { irParaValdora(); return; }
+    begin(); return;
+  }
   if (st === 'talk') {
     advanceTalk();
     if (Aud && typeof Aud.tocarEfeito === 'function') { try { Aud.tocarEfeito('avancoDialogo'); } catch (e) {} }
@@ -577,6 +640,7 @@ function hitRuna(r) {
 }
 function hitChefe(n) { if (!B || B.fl > 0 || B.hp <= 0) return; B.hp -= n; B.fl = 10; playSnd(200, 0.1); }
 function textoObjetivo() {
+  if (mapaId === 'arena2' || (inBoss && B && B.kind === 'cavaleiro')) return 'Derrote o Cavaleiro Corrompido';
   if (inBoss || mapaId === 'arena') return MVP_OBJ[4];
   if (mapaId === 'brisamar') {
     if (!lerFlag('darius_left')) return 'Vá ao festival e fale com o pessoal';
@@ -584,8 +648,27 @@ function textoObjetivo() {
     return 'Siga para a floresta, a leste';
   }
   if (mapaId === 'ruin_entry') return 'Desça pelo corredor ao norte';
+  if (mapaId === 'valdora') {
+    if (!lerFlag('darius_prov')) return 'Explore Valdora e fale com o pessoal';
+    if (!lerFlag('fragmento_pista')) return 'Descubra a pista do fragmento';
+    if (!lerFlag('boss2_defeated')) return 'Entre no templo, ao norte';
+    if (!lerFlag('proposta_vista')) return 'Volte à praça';
+    return 'Aguarde o Capítulo 3';
+  }
+  if (mapaId === 'esgoto') return 'Explore os esgotos';
   try { if (G && typeof G.indiceObjetivoCap1 === 'function') return MVP_OBJ[G.indiceObjetivoCap1()]; } catch (e) {}
   return MVP_OBJ[0];
+}
+// D-20: entrada do Cap. 2 pela tela de fim (preserva flags; não reseta).
+function irParaValdora() {
+  try { if (G && typeof G.setFlag === 'function') G.setFlag('chapter', 2); } catch (e) {}
+  items = []; S = []; RT = []; swing = 0; B = null; menuOpen = false;
+  P = criarJogador();
+  carregarMapa('valdora', 'entrada_sul', { posicionar: true, ganchos: true });
+  // B8 (= B2 do F0): o onEnter (chegada) pode ter aberto diálogo ('talk');
+  // só voltar para 'play' se estivermos vindo do 'end' sem diálogo ativo.
+  try { if (st === 'end' && !(Dlg && Dlg.isDialogueActive && Dlg.isDialogueActive())) st = 'play'; } catch (e) { st = 'play'; }
+  espelharGlobals();
 }
 // ---- linha de diálogo visível (com nome do jogador aplicado) ----
 function linhaDialogoVisivel() {
@@ -629,13 +712,13 @@ function update() {
     var hb = { x: P.x + 5 + DX[P.d] * 11 - 7, y: P.y + 5 + DY[P.d] * 11 - 7, w: 14, h: 14 };
     for (var ei = 0; ei < E.length; ei++) {
       var en = E[ei];
-      if (en.sw !== swing && ov(hb, { x: en.x, y: en.y, w: 10, h: 10 })) { en.sw = swing; hurtE(en, 2); }
+      if (en.sw !== swing && ov(hb, { x: en.x, y: en.y, w: 10, h: 10 })) { en.sw = swing; hurtE(en, danoEspada()); }
     }
     for (var ri = 0; ri < runes.length; ri++) {
       var rr = runes[ri];
       if (rr.sw !== swing && ov(hb, { x: rr.x, y: rr.y, w: T, h: T })) { rr.sw = swing; hitRuna(rr); }
     }
-    if (B && B.hp > 0 && B.sw !== swing && ov(hb, { x: B.x, y: B.y, w: 28, h: 28 })) { B.sw = swing; hitChefe(2); }
+    if (B && B.hp > 0 && B.sw !== swing && ov(hb, { x: B.x, y: B.y, w: 28, h: 28 })) { B.sw = swing; hitChefe(danoEspada()); }
     if (bush && ov(hb, { x: bush.x, y: bush.y, w: T, h: T })) {
       gravarFlag('bush_key_found', true);
       items.push({ x: bush.x + 4, y: bush.y + 4, t: 'k' });
@@ -698,7 +781,7 @@ function update() {
     if (!item.g && Math.hypot(P.x - item.x, P.y - item.y) < 11) {
       item.g = 1;
       if (item.t === 'k') { marcarChave(); showMsg('Chave obtida! Vá ao portão.'); playSnd(1000, 0.3, 'triangle'); }
-      else { P.hp = Math.min(8, P.hp + 2); playSnd(800, 0.1); }
+      else { P.hp = Math.min(P.hpMax || 8, P.hp + 2); playSnd(800, 0.1); }
     }
   }
   items = items.filter(function (i) { return !i.g; });
@@ -720,7 +803,9 @@ function update() {
     var dentro = ctx >= gs.tx && ctx < gs.tx + gs.w && cty >= gs.ty && cty < gs.ty + gs.h;
     if (dentro) dentroAlguma = true;
     if (dentro && saidaArmada && gcd <= 0) {
-      if (gs.req && !lerFlag(gs.req)) continue;
+      if (gs.req && !lerFlag(gs.req)) {
+        showMsg(gs.reqMsg || 'Trancado.'); gcd = 150; continue;
+      }
       if (mapaId === 'brisamar' && gs.to === 'forest' && !temEspada()) {
         showMsg('Melhor falar com o Mestre Orin antes de sair da vila.'); gcd = 150; continue;
       }
@@ -737,21 +822,54 @@ function update() {
     }
   }
   if (!dentroAlguma) saidaArmada = true;
+  // portão sul de Valdora: estrada bloqueada (sem mapa novo em F2)
+  if (mapaId === 'valdora' && Math.hypot(P.x + 5 - 160, P.y + 5 - 232) < 22 && gcd <= 0) {
+    showMsg('A estrada está bloqueada por monstros. Melhor não sair da cidade.'); gcd = 150;
+  }
   // chefe
   if (B) {
     if (B.fl > 0) B.fl--;
     if (B.hp <= 0) {
       if (++B.dc > 70 && !B.end) {
         B.end = 1; RT = [];
-        gravarFlag('boss1_defeated', true);
-        try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena'); } catch (e) {}
-        if (!playDialogId('boss_defeated', function () { st = 'end'; })) {
-          say([
-            ['Narrador', 'O Guardião das Raízes desmorona. Entre as raízes surge uma inscrição antiga.'],
-            ['Inscrição', 'Quando a primeira estrela cair, aquele que carrega a lembrança abrirá o caminho.']
-          ], function () { st = 'end'; });
+        if (B.kind === 'cavaleiro') {
+          // D-20: Fragmento Verde + coração extra; volta à praça p/ o gancho.
+          gravarFlag('boss2_defeated', true);
+          gravarFlag('frag_green', true);
+          P.hpMax = 10; P.hp = 10;
+          try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena2'); } catch (e) {}
+          playDialogId('vitoria2', function () { transicaoPara('valdora', 'templo'); });
+        } else {
+          gravarFlag('boss1_defeated', true);
+          try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena'); } catch (e) {}
+          if (!playDialogId('boss_defeated', function () { st = 'end'; })) {
+            say([
+              ['Narrador', 'O Guardião das Raízes desmorona. Entre as raízes surge uma inscrição antiga.'],
+              ['Inscrição', 'Quando a primeira estrela cair, aquele que carrega a lembrança abrirá o caminho.']
+            ], function () { st = 'end'; });
+          }
         }
       }
+    } else if (B.kind === 'cavaleiro') {
+      var cx2 = B.x + 14, cy2 = B.y + 14;
+      var ddx = P.x + 5 - cx2, ddy = P.y + 5 - cy2, dd = Math.hypot(ddx, ddy) || 1;
+      var furioso = B.hp <= 14;
+      B.t--;
+      if (B.m === 'walk') { B.x += ddx / dd * 0.55; B.y += ddy / dd * 0.55; if (B.t <= 0) { B.m = 'tel'; B.t = 35; playSnd(660, 0.2, 'triangle'); } }
+      else if (B.m === 'tel') {
+        if (B.t <= 0) {
+          B.m = 'golpe'; B.t = 18; B.vx = ddx / dd * 2.2; B.vy = ddy / dd * 2.2; playSnd(80, 0.4, 'sawtooth');
+          if (furioso) {
+            var angulos = [0, Math.PI / 2, Math.PI, Math.PI * 1.5];
+            for (var qx = 0; qx < 4; qx++) RT.push({ x: cx2, y: cy2, vx: Math.cos(angulos[qx]) * 1.4, vy: Math.sin(angulos[qx]) * 1.4, l: 140 });
+          }
+        }
+      }
+      else if (B.m === 'golpe') { B.x += B.vx; B.y += B.vy; if (dd < 24) hurtP(cx2, cy2); if (B.t <= 0) { B.m = 'rest'; B.t = furioso ? 45 : 55; } }
+      else if (B.t <= 0) { B.m = 'walk'; B.t = (furioso ? 55 : 70) + Math.random() * 20; }
+      B.x = Math.max(T, Math.min(MW * T - T - 28, B.x));
+      B.y = Math.max(T, Math.min(MH * T - T - 28, B.y));
+      if (dd < 20 && B.m !== 'golpe') hurtP(cx2, cy2);
     } else {
       var bx = B.x + 14, by = B.y + 14;
       var pdx = P.x + 5 - bx, pdy = P.y + 5 - by, pd = Math.hypot(pdx, pdy) || 1;
@@ -798,9 +916,15 @@ function txt(t, a, b, c, al) {
   x.fillStyle = '#000'; x.fillText(t, a + 1, b + 1);
   x.fillStyle = c || '#fff'; x.fillText(t, a, b);
 }
-var COR_NPC = { 'Mãe': '#4a9c5d', 'Darius': '#c0392b', 'Morador': '#9aa0a6', 'Mestre Orin': '#5d6d7e' };
+var COR_NPC = { 'Mãe': '#4a9c5d', 'Darius': '#c0392b', 'Morador': '#9aa0a6', 'Mestre Orin': '#5d6d7e', 'Menina': '#e88ec9', 'Capitão': '#3a6ea5', 'Refugiado': '#8a7a5a', 'Estranho': '#2a1a3a' };
 function desenharNpc(n) {
+  if (n.id === 'gato') return; // gato é objeto (desenhado em desenharObjetos)
   var cor = COR_NPC[n.nome] || '#9aa0a6';
+  if (n.id === 'estranho') {
+    R('#2a1a3a', n.x, n.y - 2, 10, 14);
+    R('#e8dcc0', n.x + 3, n.y + 1, 4, 4); R('#1a0a1a', n.x + 1, n.y - 2, 8, 4);
+    return;
+  }
   R(cor, n.x, n.y + 4, 10, 8);
   R('#f2c9a0', n.x + 1, n.y - 2, 8, 7);
   R('#3a2a1a', n.x + 1, n.y - 2, 8, 3);
@@ -824,6 +948,18 @@ function desenharInimigo(e) {
 }
 function desenharChefe() {
   var f = B.fl > 0 && fr % 4 < 2, tel = B.m === 'tel' && fr % 6 < 3;
+  if (B.kind === 'cavaleiro') {
+    if (!(B.hp <= 0 && fr % 4 < 2)) {
+      R(f ? '#fff' : tel ? '#e88' : '#7a8aa0', B.x, B.y, 28, 28);
+      R(f ? '#fff' : '#4a5a70', B.x + 4, B.y + 2, 20, 10);
+      R('#c22', B.x + 12, B.y - 2, 4, 8);
+      R('#f33', B.x + 7, B.y + 12, 5, 4); R('#f33', B.x + 16, B.y + 12, 5, 4);
+      R('#222', B.x + 4, B.y + 20, 20, 4);
+      R('#aac', B.x + 22, B.y + 8, 4, 12);
+    }
+    if (B.m === 'golpe') { x.strokeStyle = '#fa3'; x.lineWidth = 2; x.beginPath(); x.arc(B.x + 14 - CX, B.y + 14 - CY, 24, 0, 7); x.stroke(); }
+    return;
+  }
   if (!(B.hp <= 0 && fr % 4 < 2)) {
     R(f ? '#fff' : tel ? '#c66' : '#5a3a1e', B.x, B.y, 28, 28);
     R('#2f7d3a', B.x + 2, B.y + 2, 10, 6); R('#2f7d3a', B.x + 16, B.y + 18, 10, 8);
@@ -843,10 +979,26 @@ function desenharTiles() {
           if ((i * 31 + j * 17) % 19 === 0) R('#2a1a30', a + 3, b + 4, 6, 4);
         } else if (c === '#') { R('#1c5a2a', a, b, T, 13); R('#2f7d3a', a + 2, b + 1, 12, 8); R('#5a3a1e', a + 6, b + 12, 4, 4); }
         else if (c === 'G') { R('#666', a, b, T, T); R(temChave() ? '#352' : '#222', a + 3, b + 3, 10, 13); R(temChave() ? '#7f7' : '#fc4', a + 10, b + 9, 2, 2); }
-      } else if (mapaTileset === 'arena') {
-        R('#5a5a6a', a, b, T, T);
+      } else if (mapaTileset === 'arena' || mapaTileset === 'arena2') {
+        R(mapaTileset === 'arena2' ? '#565664' : '#5a5a6a', a, b, T, T);
         if (c === '.') { if ((i * 7 + j * 13) % 5 === 0) R('#666677', a + 4, b + 5, 2, 2); }
         else if (c === '#') { R('#33334a', a, b, T, T); R('#444460', a + 1, b + 1, 14, 6); }
+        if (mapaTileset === 'arena2' && c === '.' && i >= 6 && i <= 8 && j === 1) R('#7a2a2a', a + 2, b + 1, 12, 4);
+      } else if (mapaTileset === 'valdora') {
+        R('#8a8a96', a, b, T, T);
+        if (c === '.' || c === 'F') { if ((i * 5 + j * 11) % 7 === 0) R('#7c7c88', a + 6, b + 6, 3, 2); }
+        if (c === 'F') { R('#e88', a + 3, b + 3, 2, 2); R('#ee4', a + 11, b + 9, 2, 2); }
+        if (c === 'P') { R('#b8b0a0', a, b, T, T); R('#9a927e', a, b, T, 2); R('#9a927e', a, b + 14, T, 2); }
+        if (c === '#') { R('#d8c8a8', a, b, T, 11); R('#b05038', a, b, 16, 5); R('#7a3a28', a, b + 11, T, 5); }
+        if (c === 'T') { R('#7a2a1a', a, b, T, 4); R('#2a7a3a', a, b + 4, T, 6); R('#eee', a + 2, b + 6, 12, 2); R('#5a3a1e', a + 2, b + 10, 12, 6); }
+        if (c === 'D') { R('#3a3a4a', a, b, T, T); R('#c9a13a', a + 2, b, 2, T); R('#c9a13a', a + 12, b, 2, T); }
+        if (c === 'G') { R('#555560', a, b, T, T); R('#888899', a + 3, b + 1, 10, 12); R('#33333c', a + 5, b + 3, 2, 10); R('#33333c', a + 9, b + 3, 2, 10); }
+      } else if (mapaTileset === 'esgoto') {
+        R('#4a4a55', a, b, T, T);
+        if (c === '.') { if ((i * 11 + j * 7) % 6 === 0) R('#3c3c48', a + 5, b + 7, 3, 2); }
+        if (c === '#') { R('#2c2c38', a, b, T, T); R('#3c3c4c', a + 1, b + 1, 14, 6); }
+        if (c === 'W') { R('#1a3a5a', a, b, T, T); var wv2 = Math.sin(fr / 16 + i * 2 + j) > 0 ? 1 : 0; R('#3a6a9a', a + 2, b + 5 + wv2 * 4, 12, 2); }
+        if (c === 'T') { R('#4a4a55', a, b, T, T); var fl3 = (fr + i * 3 + j * 5) % 12 < 6; R('#22222c', a + 7, b + 6, 2, 10); R(fl3 ? '#fa3' : '#c72', a + 5, b + 1, 6, 5); }
       } else if (mapaTileset === 'brisamar') {
         R('#3d8b37', a, b, T, T);
         if (c === '.' || c === 'F') { if ((i * 7 + j * 13) % 5 === 0) R('#4aa043', a + 4, b + 5, 2, 2); }
@@ -885,6 +1037,18 @@ function desenharObjetos() {
       R('#8a2a2a', o.x + 4, o.y + 6, 8, 6);
     }
     else if (o.tipo === 'stall') { R('#c0392b', o.x + 1, o.y + 8, 14, 8); R('#eee', o.x + 1, o.y + 8, 14, 3); }
+    else if (o.tipo === 'gato') {
+      R('#d08a2a', o.x, o.y + 2, 8, 6);
+      R('#d08a2a', o.x + 1, o.y, 2, 3); R('#d08a2a', o.x + 5, o.y, 2, 3);
+      R('#7a4a1a', o.x + 8, o.y + 3, 3, 2);
+      R('#222', o.x + 2, o.y + 4, 1, 1); R('#222', o.x + 5, o.y + 4, 1, 1);
+    }
+    else if (o.tipo === 'grade') { R('#33333c', o.x + 1, o.y + 2, 14, 12); R('#888899', o.x + 3, o.y + 2, 2, 12); R('#888899', o.x + 7, o.y + 2, 2, 12); R('#888899', o.x + 11, o.y + 2, 2, 12); }
+    else if (o.tipo === 'bau') { R('#6a421f', o.x + 2, o.y + 5, 12, 9); R('#8a5a2a', o.x + 2, o.y + 5, 12, 4); R('#c9a13a', o.x + 7, o.y + 8, 2, 4); }
+    else if (o.tipo === 'passagem') {
+      R('#2c2c38', o.x, o.y, T, T);
+      if (lerFlag('frag_green') && fr % 40 < 25) { R('#7f7', o.x + 3, o.y + 4, 2, 2); R('#7f7', o.x + 10, o.y + 9, 2, 2); }
+    }
   }
   if (pedraAzul && !lerFlag('met_lumi')) {
     var pu = Math.sin(fr / 14) > 0 ? 0 : 1;
@@ -906,7 +1070,9 @@ function render() {
     txt('A LENDA DO CRISTAL', W / 2, 40, '#ffd866', 'center');
     txt('DO AMANHECER', W / 2, 52, '#ffd866', 'center');
     x.font = 'bold 7px monospace';
-    txt('Prólogo + Cap. 1: Brisamar e a Floresta', W / 2, 70, '#9cf', 'center');
+    var cap2 = false;
+    try { cap2 = G && G.flags && G.flags.chapter === 2; } catch (e) {}
+    txt(cap2 ? 'Cap. 2: A Cidade de Valdora' : 'Prólogo + Cap. 1: Brisamar e a Floresta', W / 2, 70, '#9cf', 'center');
     txt('Nome: ' + nomeJogador.toUpperCase(), W / 2, 88, '#ffd866', 'center');
     var hasSave = false;
     try { hasSave = Sv && typeof Sv.hasSave === 'function' && Sv.hasSave(); } catch (e) {}
@@ -969,13 +1135,13 @@ function render() {
       R('#e8dcc0', 101, 16, 6, 6); R('#000', 99, 8, 10, 6);
     }
   }
-  for (var hi = 0; hi < 8; hi++) F(hi < P.hp ? '#e33' : '#411', 4 + hi * 7, 4, 6, 6);
+  for (var hi = 0; hi < (P.hpMax || 8); hi++) F(hi < P.hp ? '#e33' : '#411', 4 + hi * 7, 4, 6, 6);
   x.font = 'bold 7px monospace';
   txt('▶ ' + textoObjetivo(), 4, 22, '#ffd866');
   if (B && B.hp > 0) {
     x.font = 'bold 7px monospace';
-    txt('Guardião das Raízes', 62, H - 15, '#f99');
-    F('#000', 60, H - 12, 120, 6); F('#c33', 61, H - 11, 118 * B.hp / 24, 4);
+    txt(B.nome || 'Chefe', 62, H - 15, '#f99');
+    F('#000', 60, H - 12, 120, 6); F('#c33', 61, H - 11, 118 * B.hp / (B.hpMax || 24), 4);
   }
   var toastOn = false, toastTxt = mt;
   if (UI && typeof UI.toastVisivel === 'function') {
@@ -1029,10 +1195,12 @@ function render() {
   if (st === 'end') {
     F('#000', 0, 0, W, H);
     for (var ti = 0; ti < 30; ti++) F('#fff', (ti * 53) % W, (ti * 37) % H, 1, 1);
-    txt('FIM DO CAPÍTULO 1', W / 2, 56, '#ffd866', 'center');
-    txt('Próximo: A Cidade de Valdora', W / 2, 76, '#9cf', 'center');
-    txt('(em breve)', W / 2, 88, '#9cf', 'center');
-    if (fr % 60 < 40) txt('Toque para jogar de novo', W / 2, 126, '#fff', 'center');
+    txt('FIM DO CAPÍTULO 1', W / 2, 50, '#ffd866', 'center');
+    txt('A Cidade de Valdora o aguarda', W / 2, 70, '#9cf', 'center');
+    if (fr % 60 < 40) {
+      txt('A: jogar de novo', W / 2, 108, '#fff', 'center');
+      txt('C: seguir para Valdora', W / 2, 120, '#7f7', 'center');
+    }
   }
   var fadeA = 0;
   try {
@@ -1111,7 +1279,7 @@ try { if (UI && typeof UI.iniciarPausaAutomatica === 'function') UI.iniciarPausa
 try { if (UI && typeof UI.definirAcaoReiniciarSala === 'function') UI.definirAcaoReiniciarSala(function () { retry(); }); } catch (e) {}
 try {
   if (Wd && typeof Wd.registerMap === 'function') {
-    var ids = ['brisamar', 'forest', 'ruin_entry'];
+    var ids = ['brisamar', 'forest', 'ruin_entry', 'valdora', 'esgoto'];
     for (var bi = 0; bi < ids.length; bi++) {
       var dd = defMapa(ids[bi]);
       if (dd) { try { Wd.registerMap(ids[bi], dd); } catch (e2) {} }

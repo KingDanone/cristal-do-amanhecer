@@ -47,7 +47,19 @@ Game.FLAG_DEFAULTS = {
   entered_ruin: false,
   boss_started: false,
   bush_key_found: false,
-  intro_floresta: false
+  intro_floresta: false,
+  // D-20: flags do Cap. 2 (Valdora). Cenas idempotentes; cat_found é
+  // requisito do Final 3 (com secret_records, no Cap. 3).
+  boss2_defeated: false,
+  gato_quest: false,
+  gato_achado: false,
+  bau_esgoto: false,
+  espada_guarda: false,
+  fragmento_pista: false,
+  darius_prov: false,
+  proposta_vista: false,
+  chegou_valdora: false,
+  esconderijo: false
 };
 
 // Replica os defaults em getDefaultFlags (única fonte = FLAG_DEFAULTS).

@@ -20,7 +20,7 @@ var SaveSystem = (typeof SaveSystem !== 'undefined' && SaveSystem !== null) ? Sa
 SaveSystem.SAVE_VERSION = 1;
 SaveSystem.DEFAULT_SLOT = 'principal';
 SaveSystem.KEY_PREFIX = 'cristalAmanhecer.v1.';
-SaveSystem.MAX_HP = 8;
+SaveSystem.MAX_HP = 10; // F2: +1 coração após o Cavaleiro Corrompido (era 8)
 SaveSystem._memoryFallback = (SaveSystem._memoryFallback && typeof SaveSystem._memoryFallback === 'object')
   ? SaveSystem._memoryFallback
   : {};
@@ -134,7 +134,7 @@ SaveSystem._collectMapId = function () {
 };
 
 SaveSystem._collectPlayer = function () {
-  var posicao = { x: 3 * 16, y: 16 * 16, hp: SaveSystem.MAX_HP };
+  var posicao = { x: 3 * 16, y: 16 * 16, hp: SaveSystem.MAX_HP, hpMax: 8 };
   try {
     if (typeof P !== 'undefined' && P !== null) {
       if (isFinite(Number(P.x))) {
@@ -145,6 +145,17 @@ SaveSystem._collectPlayer = function () {
       }
       var vida = Math.floor(Number(P.hp));
       posicao.hp = (isFinite(vida) && vida >= 1 && vida <= SaveSystem.MAX_HP) ? vida : SaveSystem.MAX_HP;
+      // B9: hpMax persiste (recompensa do Cap. 2); fallback por flag p/ saves antigos.
+      var maximo = Math.floor(Number(P.hpMax));
+      if (isFinite(maximo) && maximo >= 8 && maximo <= SaveSystem.MAX_HP) {
+        posicao.hpMax = maximo;
+      } else {
+        try {
+          posicao.hpMax = (typeof Game !== 'undefined' && Game && Game.flags && Game.flags.boss2_defeated) ? 10 : 8;
+        } catch (erroMax) {
+          posicao.hpMax = 8;
+        }
+      }
     }
   } catch (erroJogador) {
   }
@@ -194,6 +205,12 @@ SaveSystem.validateSaveData = function (dados) {
   var vida = Math.floor(Number(dados.jogador.hp));
   if (!isFinite(vida) || vida < 1 || vida > SaveSystem.MAX_HP) {
     return false;
+  }
+  if (dados.jogador.hpMax !== undefined && dados.jogador.hpMax !== null) {
+    var maximo = Math.floor(Number(dados.jogador.hpMax));
+    if (!isFinite(maximo) || maximo < 8 || maximo > SaveSystem.MAX_HP) {
+      return false;
+    }
   }
   if (!dados.flags || typeof dados.flags !== 'object' || Array.isArray(dados.flags)) {
     return false;
@@ -267,6 +284,13 @@ SaveSystem.applySaveData = function (dados) {
       P.x = Number(dados.jogador.x);
       P.y = Number(dados.jogador.y);
       P.hp = Math.floor(Number(dados.jogador.hp));
+      var maxSalvo = Math.floor(Number(dados.jogador.hpMax));
+      if (isFinite(maxSalvo) && maxSalvo >= 8 && maxSalvo <= SaveSystem.MAX_HP) {
+        P.hpMax = maxSalvo;
+      } else if (typeof Game !== 'undefined' && Game && Game.flags && Game.flags.boss2_defeated) {
+        P.hpMax = 10;
+      }
+      P.hp = Math.min(P.hp, P.hpMax || SaveSystem.MAX_HP);
       P.inv = 60;
       P.kx = 0;
       P.ky = 0;

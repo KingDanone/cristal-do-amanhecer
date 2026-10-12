@@ -14,15 +14,15 @@ sh tools/validate.sh                                         # PORTÃO ÚNICO: c
 ```
 Portão antes de cada commit: `sh tools/validate.sh`. **Commit só com VALIDATE PASS** (D-14).
 
-## Status atual (2026-10-12, pós-camada de navegador)
+## Status atual (2026-10-12, F2 entregue)
 - `node --check` em todos os `.js` (src + tools): **PASS**.
-- `tools/build.js --check-size`: **PASS** (último run: ~147 KB / 250 KB, 14 módulos + shell).
-- `tools/smoke.js`: **PASS 37/37**.
-- `tools/audit.js` (severa): **PASS 19/19** (A16 BFS nos 3 mapas, A17 refs de diálogo, A18 regressão LCG).
-- Browser MCP Chromium F0 (BC-01..BC-13): **PASS**, console **0 mensagens**; evidências em `evidence/f0-browser/`.
-- Browser MCP Chromium F1 (BC-F1-01..BC-F1-16): **PASS** (ver seção abaixo); evidências em `evidence/f1-browser/01..06`.
-- `dist/cristal.html` é o entregável jogável atual (F1: Brisamar → floresta → ruína → chefe); `cristal-cap1.html` segue
-  intacto como referência/régua do smoke. Próxima fase: F2 (Valdora).
+- `tools/build.js --check-size`: **PASS** (último run: ~170 KB / 250 KB, 17 módulos + shell).
+- `tools/smoke.js`: **PASS 40/40**.
+- `tools/audit.js` (severa): **PASS 21/21** (A16 BFS em 5 mapas, A17 refs, A18 LCG, A20 dimensões, A21 flags).
+- Browser MCP Chromium F1 (BC-F1-01..BC-F1-16): **PASS**; evidências em `evidence/f1-browser/`.
+- Browser MCP Chromium F2 (BC-F2-01..BC-F2-15): **PASS** (ver seção abaixo); evidências em `evidence/f2-browser/01..06`.
+- `dist/cristal.html` é o entregável jogável atual (F2: Valdora + esgotos + Cavaleiro); `cristal-cap1.html` segue
+  intacto como referência/régua do smoke. Próxima fase: F3 (Ruínas do Norte).
 
 ## Checklist por fase
 Legenda: ✅ coberto por teste automatizado · 🔲 manual · — não se aplica.
@@ -107,7 +107,7 @@ Severidade: qualquer BC FAIL bloqueia o commit da fase até corrigir e re-rodar.
 4. iOS Safari (safe-area real, gestos do sistema) e Android Chrome em aparelhos reais — planejado no F6.
 5. 60 fps em **celular médio** real (desktop Chromium ≠ alvo).
 6. `visibilitychange` real (troca de aba) — `document.hidden` é imutável via devtools; pausa automática revisada só em código.
-7. Rota do chefe 100% orgânica **no navegador** (morte validada em BC-F1-14 com cirurgia de estado `B.hp=2`; ciclo completo provado no smoke 37/37; spawn/arena/barra/dano/morte/vitória/fim provados no browser).
+7. Rota dos chefes 100% orgânica **no navegador** (mortes validadas com cirurgia de estado `hp=2`; ciclos completos provados no smoke 40/40; spawn/arena/barra/dano/morte/vitória/fim provados no browser para os 2 chefes).
 8. (F1, novo) Timbre/arranjo musical **audível** por tema — validado só troca de `temaAtual()` por mapa + ausência de throw; audição humana pendente.
 9. (F1, novo) Playthrough cronometrado de ~15–20 min por humano (aceite de duração) — fluxo completo provado por teleporte+estados, não em tempo real.
 
@@ -133,8 +133,32 @@ Roteiro executado no bundle F1 (`dist/cristal.html`, Chromium MCP, teclado sint�
 | BC-F1-15 | Reload + Continuar (floresta, HP/flags/posição) | MW 30, HP 2 preservado, `met_lumi`, sem diálogo zumbi |
 | BC-F1-16 | Pausa durante fade não quebra transição | chegada + retomada + volta íntegras |
 
-Bugs do ciclo (D-19): **B5** (alvo-A por proximidade), **B6** (`advanceTalk` preserva `st` do callback), **B7** (toasts descartados na troca de sala).
-Anomalia não-reproduzida: 1 ocorrência de cena→ficar em Brisamar com flags zeradas em meio a screenshots (suspeita: visibilidade da aba durante captura MCP + corrida de transição; 10+ transições seguintes ok, incluindo pausa-no-fade). Registrada, sem workaround cego; camada BC-F1-16 cobre a interação pausa×fade.
+Bugs do ciclo F1 (D-19): **B5** (alvo-A por proximidade), **B6** (`advanceTalk` preserva `st` do callback), **B7** (toasts descartados na troca de sala).
+Anomalia F1 não-reproduzida: 1 ocorrência de cena→ficar em Brisamar com flags zeradas em meio a screenshots (suspeita: visibilidade da aba durante captura MCP + corrida de transição; 10+ transições seguintes ok, incluindo pausa-no-fade). Registrada, sem workaround cego; camada BC-F1-16 cobre a interação pausa×fade.
+
+### Auditoria de navegador F2 (BC-F2-01..BC-F2-15) — 2026-10-12, PASS
+Roteiro no bundle F2 (Chromium MCP, teclado sintético, HP disciplinado p/ waits):
+
+| # | Item | Evidência/resultado |
+|---|---|---|
+| BC-F2-01 | Entrada pelo fim do Cap.1 (C) | chapter=2, Valdora 22×16, arrival, `valdora_theme` |
+| BC-F2-02 | Chegada aplica flag (sem clobber) | `chegou_valdora=true` — **revelou B8** (fix validado) |
+| BC-F2-03 | NPCs + Darius + escolha de rota do capitão | provocação exata; `capitao_antes` antes / `pista` depois; `darius_prov`, `fragmento_pista` — **revelou colisão `darius_left`** (fix: visibilidade por capítulo) |
+| BC-F2-04 | Missão do gato completa | quest → achado → `cat_found`; grade abre |
+| BC-F2-05 | Esgotos: baú (Lâmina, dano 3), passagem, volta | `bau_esgoto`, `espada_guarda`; dica sem fragmento; corações com fragmento (uso único) |
+| BC-F2-06 | Templo tranca sem pista (reqMsg) | toast exato, sem transição |
+| BC-F2-07 | Arena2: intro, ciclo walk→tel35→golpe→rest | `cavaleiro` 28HP, `boss_theme` |
+| BC-F2-08 | Morte → vitória (fala do rei) → prêmios | `boss2_defeated`, `frag_green`, hpMax 10/HP 10, volta a Valdora |
+| BC-F2-09 | Proposta auto + saída de Darius | `proposta_vista`; praça sem Darius; objetivo "Aguarde o Capítulo 3"; 5 corações no HUD |
+| BC-F2-10 | Reload + Continuar em Valdora/esgoto | mapa/HP/flags/posição; `hpMax` — **revelou B9** (fix + fallback p/ saves antigos, ambos verificados) |
+| BC-F2-11 | Pausa durante fade | transição completa + retomada íntegras |
+| BC-F2-12 | Console limpo em toda a rodada | 0 mensagens (só favicon, já embutido) |
+| BC-F2-13 | MVP legado intacto | `cristal-cap1.html` abre sem erros |
+| BC-F2-14 | Objetivo certo por sala | arena2 mostra "Cavaleiro Corrompido" (fix de precedência validado em screenshot) |
+| BC-F2-15 | Save antigo sem `hpMax` | fallback por `boss2_defeated` → 10 |
+
+Bugs do ciclo (D-21): **B8** (clobber em `irParaValdora`), **B9** (`hpMax` no save), **A21** (`esconderijo` sem registro), colisão `darius_left`, objetivo da arena2.
+Lições de harness (sem impacto no jogo): intervalos ≥300 ms (recuperação do golpe engole teclas); curar (`P.hp`+`inv`) antes de waits em áreas com inimigos; mortes em teletransporte cego viram `over` (retry provado no processo).
 
 Evidências desta rodada: `evidence/f0-browser/01..07` (+ variantes `01b`, `04`, `06`).
 
@@ -152,3 +176,6 @@ Evidências desta rodada: `evidence/f0-browser/01..07` (+ variantes `01b`, `04`,
 | 2026-10-12 | Browser MCP Chromium F1 rodada 1 (BC-F1) | **FAIL** — achou B5 (sombra de NPC), placa ausente, clobber de `begin()` |
 | 2026-10-12 | Fixes + rodada 2 | **FAIL** — achou B6 (clobber de `st='end'`) + backlog de toasts (B7) |
 | 2026-10-12 | Fixes B6/B7 + rodada 3 (BC-F1-01..16, evidências 01..06) | **PASS tudo; console 0 msgs** |
+| 2026-10-12 | `sh tools/validate.sh` (F2: build ~170 KB + smoke 40/40 + audit 21/21) | VALIDATE PASS |
+| 2026-10-12 | Browser MCP Chromium F2 rodada 1 (BC-F2) | **FAIL** — achou B8 (clobber `irParaValdora`), colisão `darius_left`, placa? não — baú/placa ok; + B9 (`hpMax`), A21 (`esconderijo`), objetivo arena2 |
+| 2026-10-12 | Fixes + rodada 2 (BC-F2-01..15, evidências 01..06) | **PASS tudo; console 0 msgs** |
