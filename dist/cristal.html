@@ -1,0 +1,3232 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Cristal do Amanhecer</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{margin:0;height:100%;background:#111;overflow:hidden;font-family:monospace;color:#fff}
+body{display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:#111}
+#c{width:min(100vw,calc((100vh - 190px)*1.5));width:min(100vw,calc((100dvh - 190px)*1.5));aspect-ratio:3/2;image-rendering:pixelated;background:#000;display:block}
+#pad{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:520px;padding:6px 18px 12px;height:170px}
+#dp{display:grid;grid-template:repeat(3,52px)/repeat(3,52px);gap:2px}
+#ac{position:relative;width:170px;height:140px}
+.b{display:flex;align-items:center;justify-content:center;background:#334;border:2px solid #667;border-radius:12px;font-style:normal;font-size:20px;color:#ccd}
+.b.on{background:#669}
+#ac .b{position:absolute;width:60px;height:60px;border-radius:50%;font-weight:bold}
+</style></head><body>
+<canvas id="c" width="240" height="160"></canvas>
+<div id="pad">
+<div id="dp"><i class="b" data-k="u" style="grid-area:1/2">▲</i><i class="b" data-k="l" style="grid-area:2/1">◀</i><i class="b" data-k="r" style="grid-area:2/3">▶</i><i class="b" data-k="d" style="grid-area:3/2">▼</i></div>
+<div id="ac"><i class="b" data-a="a" style="right:0;top:55px">A</i><i class="b" data-a="b" style="right:62px;top:80px;width:50px;height:50px">B</i><i class="b" data-a="c" style="right:44px;top:0;width:50px;height:50px">C</i></div>
+</div>
+<script>
+/* === core/flags.js === */
+// src/core/flags.js — F0-Core · Estado de progressão serializável (Game.flags).
+//
+// Decisões:
+// - D-05: Game.flags tem 13 chaves fixas. chapter (1..5); step (0..3, nº de runas
+//   ativadas na ordem certa); secret_records (int >= 0); final_choice
+//   (null | 'restaurar' | 'destruir' | 'lumi'); o resto boolean. Defaults = início
+//   do Cap. 1. Mapeia o MVP: step→step, hasKey→has_key_c1, obj→derivado via
+//   indiceObjetivoCap1() (0 explorar, 1 runas, 2 chave, 3 portão, 4 chefe).
+// - D-06: loadFlags() é tolerante e idempotente: ignora chaves desconhecidas, troca
+//   valor inválido pelo default e nunca lança; retorna false só se a entrada não for
+//   objeto (aí preserva as flags atuais). Booleans aceitam 0/1 (legado/JSON antigo).
+//
+// Uso (integrador F0): Game.resetFlags() no begin(); ler step/hasKey via
+// Game.getFlag('step') / Game.getFlag('has_key_c1'); salvar via Game.serializeFlags().
+// Sem DOM/canvas/áudio; seguro em browser concatenado e em node (smoke).
+// Custo: só acessos O(1); nenhuma alocação por frame (serialize só no save).
+
+var Game = (typeof Game !== 'undefined' && Game !== null) ? Game : {};
+
+Game.FLAG_DEFAULTS = {
+  chapter: 1,
+  sign_read: false,
+  runes_done: false,
+  step: 0,
+  has_key_c1: false,
+  boss1_defeated: false,
+  cat_found: false,
+  secret_records: 0,
+  frag_green: false,
+  frag_blue: false,
+  frag_red: false,
+  darius_spared: false,
+  final_choice: null
+};
+
+Game.FINAL_CHOICES_VALIDOS = ['restaurar', 'destruir', 'lumi'];
+
+// Devolve um objeto novo com os defaults (nunca a referência interna).
+Game.getDefaultFlags = function () {
+  return {
+    chapter: 1,
+    sign_read: false,
+    runes_done: false,
+    step: 0,
+    has_key_c1: false,
+    boss1_defeated: false,
+    cat_found: false,
+    secret_records: 0,
+    frag_green: false,
+    frag_blue: false,
+    frag_red: false,
+    darius_spared: false,
+    final_choice: null
+  };
+};
+
+// Valida/coage um valor para uma chave conhecida. Retorna {ok, valor}.
+Game._coerceFlag = function (nomeFlag, valorBruto) {
+  var defaults = Game.FLAG_DEFAULTS;
+  if (!Object.prototype.hasOwnProperty.call(defaults, nomeFlag)) {
+    return { ok: false, valor: undefined };
+  }
+  if (nomeFlag === 'chapter') {
+    var capitulo = Math.floor(Number(valorBruto));
+    if (!isFinite(capitulo) || capitulo < 1 || capitulo > 5) {
+      return { ok: false, valor: defaults.chapter };
+    }
+    return { ok: true, valor: capitulo };
+  }
+  if (nomeFlag === 'step') {
+    var passo = Math.floor(Number(valorBruto));
+    if (!isFinite(passo) || passo < 0 || passo > 3) {
+      return { ok: false, valor: defaults.step };
+    }
+    return { ok: true, valor: passo };
+  }
+  if (nomeFlag === 'secret_records') {
+    var registros = Math.floor(Number(valorBruto));
+    if (!isFinite(registros) || registros < 0) {
+      return { ok: false, valor: defaults.secret_records };
+    }
+    return { ok: true, valor: registros };
+  }
+  if (nomeFlag === 'final_choice') {
+    if (valorBruto === null || valorBruto === undefined) {
+      return { ok: true, valor: null };
+    }
+    if (Game.FINAL_CHOICES_VALIDOS.indexOf(valorBruto) !== -1) {
+      return { ok: true, valor: valorBruto };
+    }
+    return { ok: false, valor: defaults.final_choice };
+  }
+  // Chaves booleanas restantes.
+  if (valorBruto === true || valorBruto === 1) {
+    return { ok: true, valor: true };
+  }
+  if (valorBruto === false || valorBruto === 0) {
+    return { ok: true, valor: false };
+  }
+  return { ok: false, valor: defaults[nomeFlag] };
+};
+
+// Reseta para o início do Cap. 1. Idempotente: chamar 2x dá o mesmo resultado.
+Game.resetFlags = function () {
+  Game.flags = Game.getDefaultFlags();
+  return Game.flags;
+};
+
+// Cópia JSON-segura só com as chaves conhecidas (para saveGame()).
+Game.serializeFlags = function () {
+  var atuais = (Game.flags && typeof Game.flags === 'object') ? Game.flags : {};
+  var copia = Game.getDefaultFlags();
+  for (var chave in copia) {
+    if (Object.prototype.hasOwnProperty.call(atuais, chave)) {
+      var convertido = Game._coerceFlag(chave, atuais[chave]);
+      copia[chave] = convertido.ok ? convertido.valor : copia[chave];
+    }
+  }
+  return copia;
+};
+
+// Substitui as flags a partir de um objeto (ex.: loadGame()). Chaves ausentes
+// voltam ao default; desconhecidas são ignoradas. Retorna true/false.
+Game.loadFlags = function (objetoBruto) {
+  if (objetoBruto === null || typeof objetoBruto !== 'object' || Array.isArray(objetoBruto)) {
+    return false;
+  }
+  var novas = Game.getDefaultFlags();
+  for (var chave in novas) {
+    if (Object.prototype.hasOwnProperty.call(objetoBruto, chave)) {
+      var convertido = Game._coerceFlag(chave, objetoBruto[chave]);
+      novas[chave] = convertido.ok ? convertido.valor : novas[chave];
+    }
+  }
+  Game.flags = novas;
+  return true;
+};
+
+// Atribui uma flag conhecida. Desconhecida/inválida → false sem efeito colateral.
+Game.setFlag = function (nomeFlag, valorBruto) {
+  if (!Object.prototype.hasOwnProperty.call(Game.FLAG_DEFAULTS, nomeFlag)) {
+    return false;
+  }
+  var convertido = Game._coerceFlag(nomeFlag, valorBruto);
+  if (!convertido.ok) {
+    return false;
+  }
+  if (!Game.flags || typeof Game.flags !== 'object') {
+    Game.flags = Game.getDefaultFlags();
+  }
+  Game.flags[nomeFlag] = convertido.valor;
+  return true;
+};
+
+// Lê uma flag conhecida; desconhecida → undefined.
+Game.getFlag = function (nomeFlag) {
+  if (!Object.prototype.hasOwnProperty.call(Game.FLAG_DEFAULTS, nomeFlag)) {
+    return undefined;
+  }
+  if (!Game.flags || typeof Game.flags !== 'object') {
+    return Game.FLAG_DEFAULTS[nomeFlag];
+  }
+  return Game.flags[nomeFlag];
+};
+
+// Deriva o índice do OBJ[] do MVP (0..4) a partir das flags. Ponte p/ o HUD atual.
+Game.indiceObjetivoCap1 = function (flagsOpcional) {
+  var flagsAtuais = (flagsOpcional && typeof flagsOpcional === 'object')
+    ? flagsOpcional
+    : (Game.flags || Game.FLAG_DEFAULTS);
+  if (flagsAtuais.boss1_defeated === true) {
+    return 4;
+  }
+  if (flagsAtuais.has_key_c1 === true) {
+    return 3;
+  }
+  if (flagsAtuais.runes_done === true || flagsAtuais.step >= 3) {
+    return 2;
+  }
+  if (flagsAtuais.sign_read === true || flagsAtuais.step > 0) {
+    return 1;
+  }
+  return 0;
+};
+
+if (!Game.flags || typeof Game.flags !== 'object') {
+  Game.resetFlags();
+}
+
+;
+/* === core/save.js === */
+// src/core/save.js — F0-Core · Save/Load em slot único (localStorage + fallback).
+//
+// Decisões:
+// - D-10: payload versionado {versao:1, salvoEm, mapa, jogador:{x,y,hp}, flags,
+//   objetivo}; chave 'cristalAmanhecer.v1.<slot>'; slot default 'principal'.
+//   Salva ao trocar de mapa (connectSaveToWorld() → World.onMapChanged) e ao pegar
+//   item-chave (saveOnKeyItem()). A floresta é procedural determinística (seed=7),
+//   então basta persistir o id do mapa + posição: os geradores atuais recriam o resto.
+// - D-11: todo acesso a localStorage em try/catch com fallback em memória (aba
+//   privada/headless); loadGame() valida TUDO antes de aplicar (nunca aplica parcial);
+//   botão Continuar via setupContinueButton(botao, aoCarregar) com pointer events,
+//   sem <form>. hp mínimo 1 ao carregar (nunca restaura morto).
+//
+// Uso (título): connectSaveToWorld(); setupContinueButton(el, function(){ st='play'; });
+// API global: saveGame(slot?), loadGame(slot?), hasSave(slot?), saveOnMapChange(),
+// saveOnKeyItem(), connectSaveToWorld(), setupContinueButton(), describeSave().
+
+var SaveSystem = (typeof SaveSystem !== 'undefined' && SaveSystem !== null) ? SaveSystem : {};
+
+SaveSystem.SAVE_VERSION = 1;
+SaveSystem.DEFAULT_SLOT = 'principal';
+SaveSystem.KEY_PREFIX = 'cristalAmanhecer.v1.';
+SaveSystem.MAX_HP = 8;
+SaveSystem._memoryFallback = (SaveSystem._memoryFallback && typeof SaveSystem._memoryFallback === 'object')
+  ? SaveSystem._memoryFallback
+  : {};
+
+SaveSystem._slotName = function (slotBruto) {
+  return (typeof slotBruto === 'string' && slotBruto.length > 0) ? slotBruto : SaveSystem.DEFAULT_SLOT;
+};
+
+SaveSystem._keyFor = function (slotBruto) {
+  return SaveSystem.KEY_PREFIX + SaveSystem._slotName(slotBruto);
+};
+
+SaveSystem._storageGet = function (chave) {
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage !== null) {
+      var valorNativo = localStorage.getItem(chave);
+      if (valorNativo !== null && valorNativo !== undefined) {
+        return valorNativo;
+      }
+    }
+  } catch (erroLeituraNativa) {
+    // Cai para o fallback em memória.
+  }
+  var reserva = SaveSystem._memoryFallback[chave];
+  return (typeof reserva === 'string') ? reserva : null;
+};
+
+SaveSystem._storageSet = function (chave, valorTexto) {
+  var gravouNativo = false;
+  try {
+    if (typeof localStorage !== 'undefined' && localStorage !== null) {
+      localStorage.setItem(chave, valorTexto);
+      gravouNativo = true;
+    }
+  } catch (erroEscritaNativa) {
+    gravouNativo = false;
+  }
+  if (!gravouNativo) {
+    try {
+      SaveSystem._memoryFallback[chave] = valorTexto;
+    } catch (erroReserva) {
+      return false;
+    }
+  }
+  return true;
+};
+
+// Flags atuais: prefere Game.serializeFlags(); senão espelha o MVP (step/hasKey/obj).
+SaveSystem._collectFlags = function () {
+  var baseFlags = null;
+  try {
+    if (typeof Game !== 'undefined' && Game !== null) {
+      if (typeof Game.serializeFlags === 'function') {
+        return Game.serializeFlags();
+      }
+      if (Game.flags && typeof Game.flags === 'object') {
+        return JSON.parse(JSON.stringify(Game.flags));
+      }
+      if (typeof Game.getDefaultFlags === 'function') {
+        baseFlags = Game.getDefaultFlags();
+      }
+    }
+  } catch (erroFlags) {
+    baseFlags = null;
+  }
+  if (!baseFlags || typeof baseFlags !== 'object') {
+    baseFlags = {
+      chapter: 1, sign_read: false, runes_done: false, step: 0, has_key_c1: false,
+      boss1_defeated: false, cat_found: false, secret_records: 0, frag_green: false,
+      frag_blue: false, frag_red: false, darius_spared: false, final_choice: null
+    };
+  }
+  try {
+    if (typeof step !== 'undefined') {
+      var passo = Math.floor(Number(step));
+      baseFlags.step = (isFinite(passo) && passo >= 0 && passo <= 3) ? passo : 0;
+      baseFlags.runes_done = baseFlags.step >= 3;
+    }
+    if (typeof hasKey !== 'undefined') {
+      baseFlags.has_key_c1 = (hasKey === true);
+    }
+    if (typeof obj !== 'undefined' && Number(obj) >= 1) {
+      baseFlags.sign_read = true;
+    }
+    if (typeof B !== 'undefined' && B !== null && B.end === 1) {
+      baseFlags.boss1_defeated = true;
+    }
+  } catch (erroMvp) {
+    // Espelho do MVP é best-effort; as flags base continuam válidas.
+  }
+  return baseFlags;
+};
+
+SaveSystem._collectMapId = function () {
+  try {
+    if (typeof World !== 'undefined' && World !== null && typeof World.getCurrentId === 'function') {
+      var atual = World.getCurrentId();
+      if (typeof atual === 'string' && atual.length > 0) {
+        return atual;
+      }
+    }
+  } catch (erroMundo) {
+  }
+  try {
+    if (typeof inBoss !== 'undefined' && inBoss === true) {
+      return 'arena';
+    }
+  } catch (erroArena) {
+  }
+  return 'floresta';
+};
+
+SaveSystem._collectPlayer = function () {
+  var posicao = { x: 3 * 16, y: 16 * 16, hp: SaveSystem.MAX_HP };
+  try {
+    if (typeof P !== 'undefined' && P !== null) {
+      if (isFinite(Number(P.x))) {
+        posicao.x = Number(P.x);
+      }
+      if (isFinite(Number(P.y))) {
+        posicao.y = Number(P.y);
+      }
+      var vida = Math.floor(Number(P.hp));
+      posicao.hp = (isFinite(vida) && vida >= 1 && vida <= SaveSystem.MAX_HP) ? vida : SaveSystem.MAX_HP;
+    }
+  } catch (erroJogador) {
+  }
+  return posicao;
+};
+
+SaveSystem.collectSaveData = function () {
+  var flagsCopia = SaveSystem._collectFlags();
+  var objetivo = 0;
+  try {
+    if (typeof Game !== 'undefined' && Game !== null && typeof Game.indiceObjetivoCap1 === 'function') {
+      objetivo = Game.indiceObjetivoCap1(flagsCopia);
+    } else if (typeof obj !== 'undefined') {
+      var bruto = Math.floor(Number(obj));
+      objetivo = (isFinite(bruto) && bruto >= 0 && bruto <= 4) ? bruto : 0;
+    }
+  } catch (erroObjetivo) {
+    objetivo = 0;
+  }
+  return {
+    versao: SaveSystem.SAVE_VERSION,
+    salvoEm: (typeof Date !== 'undefined' && Date !== null) ? Date.now() : 0,
+    mapa: SaveSystem._collectMapId(),
+    jogador: SaveSystem._collectPlayer(),
+    flags: flagsCopia,
+    objetivo: objetivo
+  };
+};
+
+// Validação estrutural (a validação fina das flags é do Game.loadFlags).
+SaveSystem.validateSaveData = function (dados) {
+  if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
+    return false;
+  }
+  if (dados.versao !== SaveSystem.SAVE_VERSION) {
+    return false;
+  }
+  if (typeof dados.mapa !== 'string' || dados.mapa.length === 0) {
+    return false;
+  }
+  if (!dados.jogador || typeof dados.jogador !== 'object') {
+    return false;
+  }
+  if (!isFinite(Number(dados.jogador.x)) || !isFinite(Number(dados.jogador.y))) {
+    return false;
+  }
+  var vida = Math.floor(Number(dados.jogador.hp));
+  if (!isFinite(vida) || vida < 1 || vida > SaveSystem.MAX_HP) {
+    return false;
+  }
+  if (!dados.flags || typeof dados.flags !== 'object' || Array.isArray(dados.flags)) {
+    return false;
+  }
+  return true;
+};
+
+// Aplica dados já validados: flags → mapa (recria via World/MVP) → jogador.
+SaveSystem.applySaveData = function (dados) {
+  if (!SaveSystem.validateSaveData(dados)) {
+    return false;
+  }
+  try {
+    if (typeof Game !== 'undefined' && Game !== null) {
+      if (typeof Game.loadFlags === 'function') {
+        Game.loadFlags(dados.flags);
+      } else {
+        Game.flags = JSON.parse(JSON.stringify(dados.flags));
+      }
+    }
+  } catch (erroFlags) {
+    return false;
+  }
+  var mapaAplicado = false;
+  try {
+    if (typeof World !== 'undefined' && World !== null &&
+        typeof World.gotoImmediate === 'function' && World.maps && World.maps[dados.mapa]) {
+      mapaAplicado = World.gotoImmediate(dados.mapa) === true;
+    }
+  } catch (erroMundo) {
+    mapaAplicado = false;
+  }
+  if (!mapaAplicado) {
+    try {
+      if (dados.mapa === 'arena' && typeof arena === 'function') {
+        arena();
+        mapaAplicado = true;
+      } else if (typeof forest === 'function') {
+        forest();
+        mapaAplicado = true;
+      }
+    } catch (erroLegado) {
+      mapaAplicado = false;
+    }
+  }
+  try {
+    if (typeof Game !== 'undefined' && Game !== null && Game.flags) {
+      if (typeof step !== 'undefined') {
+        step = Game.flags.step;
+      }
+    }
+  } catch (erroPasso) {
+  }
+  try {
+    if (typeof Game !== 'undefined' && Game !== null && Game.flags) {
+      if (typeof hasKey !== 'undefined') {
+        hasKey = (Game.flags.has_key_c1 === true);
+      }
+      if (typeof obj !== 'undefined') {
+        if (typeof Game.indiceObjetivoCap1 === 'function') {
+          obj = Game.indiceObjetivoCap1(Game.flags);
+        } else if (isFinite(Number(dados.objetivo))) {
+          obj = Math.max(0, Math.min(4, Math.floor(Number(dados.objetivo))));
+        }
+      }
+    }
+  } catch (erroMvp) {
+  }
+  try {
+    if (typeof P !== 'undefined' && P !== null) {
+      P.x = Number(dados.jogador.x);
+      P.y = Number(dados.jogador.y);
+      P.hp = Math.floor(Number(dados.jogador.hp));
+      P.inv = 60;
+      P.kx = 0;
+      P.ky = 0;
+    }
+  } catch (erroPosicao) {
+    return false;
+  }
+  return true;
+};
+
+SaveSystem.saveGame = function (slotBruto) {
+  try {
+    var dados = SaveSystem.collectSaveData();
+    var texto = JSON.stringify(dados);
+    return SaveSystem._storageSet(SaveSystem._keyFor(slotBruto), texto);
+  } catch (erroSave) {
+    return false;
+  }
+};
+
+SaveSystem.loadGame = function (slotBruto) {
+  var textoBruto = SaveSystem._storageGet(SaveSystem._keyFor(slotBruto));
+  if (typeof textoBruto !== 'string' || textoBruto.length === 0) {
+    return false;
+  }
+  var dados = null;
+  try {
+    dados = JSON.parse(textoBruto);
+  } catch (erroParse) {
+    return false;
+  }
+  return SaveSystem.applySaveData(dados);
+};
+
+SaveSystem.hasSave = function (slotBruto) {
+  var textoBruto = SaveSystem._storageGet(SaveSystem._keyFor(slotBruto));
+  if (typeof textoBruto !== 'string' || textoBruto.length === 0) {
+    return false;
+  }
+  try {
+    return SaveSystem.validateSaveData(JSON.parse(textoBruto));
+  } catch (erroValidacao) {
+    return false;
+  }
+};
+
+// Resumo para a tela de título ("Continuar — Cap. X"). Null se não há save.
+SaveSystem.describeSave = function (slotBruto) {
+  var textoBruto = SaveSystem._storageGet(SaveSystem._keyFor(slotBruto));
+  if (typeof textoBruto !== 'string' || textoBruto.length === 0) {
+    return null;
+  }
+  try {
+    var dados = JSON.parse(textoBruto);
+    if (!SaveSystem.validateSaveData(dados)) {
+      return null;
+    }
+    return {
+      capitulo: (dados.flags && isFinite(Number(dados.flags.chapter))) ? Number(dados.flags.chapter) : 1,
+      mapa: dados.mapa,
+      salvoEm: dados.salvoEm,
+      vida: dados.jogador.hp
+    };
+  } catch (erroResumo) {
+    return null;
+  }
+};
+
+// Chamado ao trocar de mapa (hook de World.onMapChanged). Salva no slot único.
+SaveSystem.saveOnMapChange = function (idMapa, spawnId) {
+  return SaveSystem.saveGame(SaveSystem.DEFAULT_SLOT);
+};
+
+// Chamado ao pegar item-chave (ex.: chave do Cap. 1). Salva no slot único.
+SaveSystem.saveOnKeyItem = function (itemChave) {
+  return SaveSystem.saveGame(SaveSystem.DEFAULT_SLOT);
+};
+
+// Liga o autosave à troca de mapa. Retorna false se World ainda não carregou
+// (aí o integrador chama de novo após concatenar world.js).
+SaveSystem.connectSaveToWorld = function () {
+  try {
+    if (typeof World === 'undefined' || World === null) {
+      return false;
+    }
+    World.onMapChanged = function (idMapa, spawnId) {
+      try {
+        SaveSystem.saveOnMapChange(idMapa, spawnId);
+      } catch (erroHook) {
+        // Autosave nunca pode quebrar a troca de mapa.
+      }
+    };
+    return true;
+  } catch (erroConexao) {
+    return false;
+  }
+};
+
+// Botão Continuar: esconde sem save; com save, carrega e chama aoCarregar().
+// Sem <form>; só pointer events. Retorna true se o botão foi ligado.
+SaveSystem.setupContinueButton = function (botaoElemento, aoCarregar) {
+  if (!botaoElemento) {
+    return false;
+  }
+  var temSave = SaveSystem.hasSave(SaveSystem.DEFAULT_SLOT);
+  try {
+    botaoElemento.style.display = temSave ? '' : 'none';
+  } catch (erroEstilo) {
+    // Estilo é cosmético; segue para o listener.
+  }
+  try {
+    botaoElemento.addEventListener('pointerdown', function (eventoClique) {
+      try {
+        if (eventoClique && typeof eventoClique.preventDefault === 'function') {
+          eventoClique.preventDefault();
+        }
+      } catch (erroEvento) {
+      }
+      var carregou = SaveSystem.loadGame(SaveSystem.DEFAULT_SLOT);
+      if (carregou && typeof aoCarregar === 'function') {
+        try {
+          aoCarregar();
+        } catch (erroCallback) {
+        }
+      }
+    });
+  } catch (erroBotao) {
+    return false;
+  }
+  return true;
+};
+
+try {
+  SaveSystem.connectSaveToWorld();
+} catch (erroAuto) {
+  // World pode carregar depois; o integrador chama connectSaveToWorld().
+}
+
+function saveGame(slotBruto) {
+  return SaveSystem.saveGame(slotBruto);
+}
+
+function loadGame(slotBruto) {
+  return SaveSystem.loadGame(slotBruto);
+}
+
+function hasSave(slotBruto) {
+  return SaveSystem.hasSave(slotBruto);
+}
+
+function saveOnMapChange(idMapa, spawnId) {
+  return SaveSystem.saveOnMapChange(idMapa, spawnId);
+}
+
+function saveOnKeyItem(itemChave) {
+  return SaveSystem.saveOnKeyItem(itemChave);
+}
+
+function connectSaveToWorld() {
+  return SaveSystem.connectSaveToWorld();
+}
+
+function setupContinueButton(botaoElemento, aoCarregar) {
+  return SaveSystem.setupContinueButton(botaoElemento, aoCarregar);
+}
+
+function describeSave(slotBruto) {
+  return SaveSystem.describeSave(slotBruto);
+}
+
+;
+/* === core/tiles.js === */
+// src/core/tiles.js — F0-Core · Tabela de tiles (única fonte de verdade).
+//
+// Decisões:
+// - D-07: TILES é a única fonte de verdade sobre solidez; o render futuro usa
+//   lookup (TILES[caractere]) em vez de if/else por caractere. Caractere
+//   desconhecido = sólido (falha segura: nunca deixa atravessar parede).
+//   Compatível com os mapas atuais: '#' árvore/parede, '.' chão, 'G' portão.
+//
+// Uso (render futuro, sem if/else):
+//   var definicao = getTileDef(caractere); // {solid, isGate?}
+//   // solidez: isSolidTile(caractere); portão: isGateTile(caractere)
+//   // colisão por pixel: isBlockedPixel(mapa, largura, altura, px, py, 16)
+// Sem DOM/canvas; O(1) por consulta, sem alocação no caminho quente.
+
+var TILES = (typeof TILES !== 'undefined' && TILES !== null) ? TILES : {
+  '#': { solid: 1 },
+  '.': { solid: 0 },
+  'G': { solid: 1, isGate: 1 }
+};
+
+var TILE_DESCONHECIDO = { solid: 1 };
+
+// Lookup com fallback seguro; nunca retorna undefined.
+function getTileDef(caractere) {
+  return TILES[caractere] || TILE_DESCONHECIDO;
+}
+
+function isSolidTile(caractere) {
+  return getTileDef(caractere).solid === 1;
+}
+
+function isGateTile(caractere) {
+  return getTileDef(caractere).isGate === 1;
+}
+
+// Equivalente ao solidAt() do MVP, mas puro (recebe a matriz). Fora do mapa = sólido.
+function isBlockedPixel(mapaMatriz, larguraTiles, alturaTiles, pixelX, pixelY, tamanhoTile) {
+  var tamanho = tamanhoTile || 16;
+  var coluna = Math.floor(pixelX / tamanho);
+  var linha = Math.floor(pixelY / tamanho);
+  var foraDoMapa = coluna < 0 || linha < 0 || coluna >= larguraTiles || linha >= alturaTiles;
+  var linhaTiles = foraDoMapa ? null : mapaMatriz[linha];
+  var caractere = linhaTiles ? linhaTiles[coluna] : '#';
+  return foraDoMapa || isSolidTile(caractere);
+}
+
+;
+/* === core/world.js === */
+// src/core/world.js — F0-Core · Registro multi-mapa e transição com fade.
+//
+// Decisões:
+// - D-08: goto(idMapa, spawnId) abre transição de 12 frames (6 de saída + 6 de
+//   entrada); o mapa é aplicado no meio (fadeTimer chega a 6) e getFadeAlpha()
+//   devolve 0..1 para o render desenhar o véu preto. updateWorldTransition() deve
+//   ser chamado 1x por passo fixo (60 Hz). Spawns são {tileX, tileY}; a ponte com
+//   o MVP converte para pixels (× TILE_PIXELS).
+// - D-09: snapshotMvpMap() embrulha os mapas atuais (forest()/arena()) como MapDef
+//   sem mudar a jogabilidade: World nunca chama os geradores no load; entidades
+//   (runas, slimes, placa, chefe) continuam com o código atual até a refatoração F0.
+//   MapDef segue 03_ARCHITECTURE.md §11, mais o opcional bossArena (ponte p/ inBoss).
+//
+// Formato MapDef: {id, w, h, tiles, tileset, spawns, exits, npcs, enemies, objects,
+//   music, onEnter}. exits: [{x, y, to, spawn}]; spawns: {id: {tileX, tileY}}.
+// Uso (integrador): registerMap('floresta', createMapDef(...)); goto('arena',
+//   'entrada'); no update(): updateWorldTransition(); no render(): getFadeAlpha().
+// Sem DOM; seguro em node (ponte com o MVP via typeof + try/catch).
+
+var World = (typeof World !== 'undefined' && World !== null) ? World : {};
+
+World.maps = (World.maps && typeof World.maps === 'object') ? World.maps : {};
+World.currentId = (typeof World.currentId === 'string') ? World.currentId : null;
+World.pendingTransition = World.pendingTransition || null;
+World.fadeTimer = World.fadeTimer || 0;
+World.onMapChanged = (typeof World.onMapChanged === 'function') ? World.onMapChanged : null;
+
+World.FADE_TOTAL_FRAMES = 12;
+World.FADE_HALF_FRAMES = 6;
+World.TILE_PIXELS = 16;
+World.DEFAULT_SPAWN_ID = 'entrada';
+
+// Valida dimensões + matriz de tiles (w×h). Retorna true/false.
+World._tilesValidos = function (largura, altura, matrizTiles) {
+  if (typeof largura !== 'number' || typeof altura !== 'number') {
+    return false;
+  }
+  if (Math.floor(largura) !== largura || Math.floor(altura) !== altura) {
+    return false;
+  }
+  if (largura <= 0 || altura <= 0 || !matrizTiles || !matrizTiles.length) {
+    return false;
+  }
+  if (matrizTiles.length !== altura || !matrizTiles[0]) {
+    return false;
+  }
+  return matrizTiles[0].length === largura;
+};
+
+// Fábrica de MapDef com defaults. Retorna o def ou null se inválido.
+World.createMapDef = function (idMapa, opcoes) {
+  if (typeof idMapa !== 'string' || idMapa.length === 0) {
+    return null;
+  }
+  var conf = (opcoes && typeof opcoes === 'object') ? opcoes : {};
+  var largura = conf.w;
+  var altura = conf.h;
+  var matrizTiles = conf.tiles;
+  if (!World._tilesValidos(largura, altura, matrizTiles)) {
+    return null;
+  }
+  var onEnterFn = (typeof conf.onEnter === 'function') ? conf.onEnter : null;
+  var musica = (typeof conf.music === 'string' || conf.music === null) ? conf.music : null;
+  if (typeof conf.music !== 'string' && conf.music !== null && conf.music !== undefined) {
+    musica = null;
+  }
+  return {
+    id: idMapa,
+    w: largura,
+    h: altura,
+    tiles: matrizTiles,
+    tileset: (typeof conf.tileset === 'string' && conf.tileset.length > 0) ? conf.tileset : 'floresta',
+    spawns: (conf.spawns && typeof conf.spawns === 'object') ? conf.spawns : {},
+    exits: Array.isArray(conf.exits) ? conf.exits : [],
+    npcs: Array.isArray(conf.npcs) ? conf.npcs : [],
+    enemies: Array.isArray(conf.enemies) ? conf.enemies : [],
+    objects: Array.isArray(conf.objects) ? conf.objects : [],
+    music: (typeof conf.music === 'string') ? conf.music : musica,
+    onEnter: onEnterFn,
+    bossArena: (typeof conf.bossArena === 'boolean') ? conf.bossArena : undefined
+  };
+};
+
+// Registra um MapDef. Idempotente: registrar o mesmo id 2x sobrescreve igual.
+World.registerMap = function (idMapa, defMapa) {
+  if (typeof idMapa !== 'string' || idMapa.length === 0) {
+    return false;
+  }
+  if (!defMapa || typeof defMapa !== 'object') {
+    return false;
+  }
+  if (!World._tilesValidos(defMapa.w, defMapa.h, defMapa.tiles)) {
+    return false;
+  }
+  defMapa.id = idMapa;
+  World.maps[idMapa] = defMapa;
+  return true;
+};
+
+World.getMap = function (idMapa) {
+  return World.maps[idMapa] || null;
+};
+
+World.listMapIds = function () {
+  return Object.keys(World.maps);
+};
+
+World.getCurrentId = function () {
+  return World.currentId;
+};
+
+World.getCurrentMap = function () {
+  return World.currentId ? (World.maps[World.currentId] || null) : null;
+};
+
+// Resolve o spawn (cai para 'entrada', 'default' ou o 1º). Sempre retorna {tileX, tileY}.
+World.resolveSpawnTile = function (defMapa, spawnId) {
+  var padrao = { tileX: 1, tileY: 1 };
+  if (!defMapa || !defMapa.spawns || typeof defMapa.spawns !== 'object') {
+    return padrao;
+  }
+  var reservas = defMapa.spawns;
+  var escolhido = reservas[spawnId] || reservas[World.DEFAULT_SPAWN_ID] || reservas.default || null;
+  if (!escolhido) {
+    for (var chave in reservas) {
+      if (Object.prototype.hasOwnProperty.call(reservas, chave) && reservas[chave]) {
+        escolhido = reservas[chave];
+        break;
+      }
+    }
+  }
+  if (!escolhido || typeof escolhido !== 'object') {
+    return padrao;
+  }
+  var coluna = Math.floor(Number(escolhido.tileX));
+  var linha = Math.floor(Number(escolhido.tileY));
+  return {
+    tileX: (isFinite(coluna) && coluna >= 0) ? coluna : 1,
+    tileY: (isFinite(linha) && linha >= 0) ? linha : 1
+  };
+};
+
+// Saída (portal) na posição de tile, ou null.
+World.findExitAtTile = function (idMapa, colunaTile, linhaTile) {
+  var defMapa = World.maps[idMapa];
+  if (!defMapa || !Array.isArray(defMapa.exits)) {
+    return null;
+  }
+  for (var indice = 0; indice < defMapa.exits.length; indice++) {
+    var saida = defMapa.exits[indice];
+    if (saida && saida.x === colunaTile && saida.y === linhaTile) {
+      return saida;
+    }
+  }
+  return null;
+};
+
+// Troca de mapa com fade de 12 frames. Retorna false se o mapa não existe.
+World.goto = function (idMapa, spawnId) {
+  if (!World.maps[idMapa]) {
+    return false;
+  }
+  var nomeSpawn = (typeof spawnId === 'string' && spawnId.length > 0)
+    ? spawnId
+    : World.DEFAULT_SPAWN_ID;
+  World.pendingTransition = { mapId: idMapa, spawnId: nomeSpawn };
+  World.fadeTimer = World.FADE_TOTAL_FRAMES;
+  return true;
+};
+
+// Troca imediata, sem fade (retry, loadGame, testes). Retorna true/false.
+World.gotoImmediate = function (idMapa, spawnId) {
+  return World._applyMap(idMapa, spawnId);
+};
+
+// Avança a transição; chamar 1x por passo fixo. Retorna se ainda está em transição.
+World.updateWorldTransition = function () {
+  if (!World.fadeTimer || World.fadeTimer <= 0) {
+    return false;
+  }
+  World.fadeTimer -= 1;
+  if (World.fadeTimer === World.FADE_HALF_FRAMES && World.pendingTransition) {
+    World._applyMap(World.pendingTransition.mapId, World.pendingTransition.spawnId);
+  }
+  if (World.fadeTimer <= 0) {
+    World.fadeTimer = 0;
+    World.pendingTransition = null;
+  }
+  return World.fadeTimer > 0;
+};
+
+World.isTransitioning = function () {
+  return World.fadeTimer > 0;
+};
+
+// 0 = sem véu, 1 = tela preta (pico no meio da transição). Para o render.
+World.getFadeAlpha = function () {
+  if (!World.fadeTimer || World.fadeTimer <= 0) {
+    return 0;
+  }
+  if (World.fadeTimer > World.FADE_HALF_FRAMES) {
+    return (World.FADE_TOTAL_FRAMES - World.fadeTimer) / World.FADE_HALF_FRAMES;
+  }
+  return World.fadeTimer / World.FADE_HALF_FRAMES;
+};
+
+// Aplica o mapa: registra currentId, posiciona o jogador (ponte MVP), dispara
+// onEnter(def) e o hook onMapChanged (onde save.js se conecta). Retorna bool.
+World._applyMap = function (idMapa, spawnId) {
+  var defMapa = World.maps[idMapa];
+  if (!defMapa) {
+    return false;
+  }
+  World.currentId = idMapa;
+  var pontoTile = World.resolveSpawnTile(defMapa, spawnId);
+  World._applyToMvp(defMapa, pontoTile);
+  if (typeof defMapa.onEnter === 'function') {
+    try {
+      defMapa.onEnter((typeof Game !== 'undefined') ? Game : null);
+    } catch (erroOnEnter) {
+      // onEnter nunca pode quebrar a troca de mapa.
+    }
+  }
+  if (typeof World.onMapChanged === 'function') {
+    try {
+      World.onMapChanged(idMapa, spawnId);
+    } catch (erroHook) {
+      // Hook de save nunca pode quebrar a troca de mapa.
+    }
+  }
+  return true;
+};
+
+// Ponte com as globais do MVP (M/MW/MH/P/inBoss). Sem o MVP, só ignora.
+World._applyToMvp = function (defMapa, pontoTile) {
+  try {
+    if (typeof M !== 'undefined' && defMapa.tiles) {
+      M = defMapa.tiles.map(function (linhaTiles) {
+        return linhaTiles.slice();
+      });
+    }
+  } catch (erroTiles) {
+    // Sem o MVP carregado, não há o que atualizar.
+  }
+  try {
+    if (typeof MW !== 'undefined') {
+      MW = defMapa.w;
+    }
+  } catch (erroLargura) {
+  }
+  try {
+    if (typeof MH !== 'undefined') {
+      MH = defMapa.h;
+    }
+  } catch (erroAltura) {
+  }
+  try {
+    if (typeof P !== 'undefined' && P !== null && pontoTile) {
+      P.x = pontoTile.tileX * World.TILE_PIXELS;
+      P.y = pontoTile.tileY * World.TILE_PIXELS;
+    }
+  } catch (erroJogador) {
+  }
+  try {
+    if (typeof inBoss !== 'undefined' && typeof defMapa.bossArena === 'boolean') {
+      inBoss = defMapa.bossArena;
+    }
+  } catch (erroArena) {
+  }
+  return true;
+};
+
+// Fotografa o mapa atual do MVP (M/MW/MH) como MapDef registrado.
+// Integrador: forest(); snapshotMvpMap('floresta', {spawns: {...}, bossArena: false});
+//            arena(); snapshotMvpMap('arena', {spawns: {...}, bossArena: true});
+World.snapshotMvpMap = function (idMapa, opcoes) {
+  try {
+    if (typeof M === 'undefined' || typeof MW === 'undefined' || typeof MH === 'undefined') {
+      return false;
+    }
+    var conf = (opcoes && typeof opcoes === 'object') ? opcoes : {};
+    var copiaTiles = M.map(function (linhaTiles) {
+      return linhaTiles.slice();
+    });
+    var defMapa = World.createMapDef(idMapa, {
+      w: MW,
+      h: MH,
+      tiles: copiaTiles,
+      tileset: conf.tileset || 'floresta',
+      spawns: conf.spawns || { entrada: { tileX: 3, tileY: 16 } },
+      exits: conf.exits || [],
+      npcs: [],
+      enemies: [],
+      objects: [],
+      music: conf.music || null,
+      onEnter: conf.onEnter || null,
+      bossArena: conf.bossArena
+    });
+    if (!defMapa) {
+      return false;
+    }
+    return World.registerMap(idMapa, defMapa);
+  } catch (erroSnapshot) {
+    return false;
+  }
+};
+
+;
+/* === systems/audio.js === */
+/**
+ * src/systems/audio.js — Áudio: SFX + volume mestre + mudo persistente
+ * Frente F0-Systems. Sem dependências externas, sem fetch.
+ *
+ * Regras (04_DEV_PLAN.md / 03_ARCHITECTURE.md):
+ * - AudioContext criado SÓ após o 1º toque (respeita o autoplay).
+ *   Chamar desbloquearAudio() dentro de um handler de pointerdown/tecla.
+ * - Mudo persistente em localStorage, sempre em try/catch.
+ * - snd(freq, dur, tipo) mantida por compatibilidade com o MVP.
+ */
+(function sistemaAudio() {
+  'use strict';
+
+  var CHAVE_MUDO = 'cristal_amanhecer_mudo';
+  var CHAVE_VOLUME = 'cristal_amanhecer_volume';
+
+  var contextoAudio = null;
+  var ganhoMestre = null;
+  var volumeMestre = 1.0;
+  var emudecido = lerMudoSalvo();
+  volumeMestre = lerVolumeSalvo();
+
+  function lerMudoSalvo() {
+    try {
+      if (typeof localStorage === 'undefined') return false;
+      return localStorage.getItem(CHAVE_MUDO) === '1';
+    } catch (erro) {
+      return false;
+    }
+  }
+
+  function lerVolumeSalvo() {
+    try {
+      if (typeof localStorage === 'undefined') return 1.0;
+      var bruto = parseFloat(localStorage.getItem(CHAVE_VOLUME));
+      if (isNaN(bruto)) return 1.0;
+      return Math.max(0, Math.min(1, bruto));
+    } catch (erro) {
+      return 1.0;
+    }
+  }
+
+  function salvarPreferencias() {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      localStorage.setItem(CHAVE_MUDO, emudecido ? '1' : '0');
+      localStorage.setItem(CHAVE_VOLUME, String(volumeMestre));
+    } catch (erro) {
+      // Armazenamento indisponível: segue sem persistir.
+    }
+  }
+
+  /**
+   * Deve ser chamado no 1º gesto do jogador (pointerdown/tecla).
+   * Cria o AudioContext de forma preguiçosa e retoma se suspenso.
+   */
+  function desbloquearAudio() {
+    try {
+      var Construtor = typeof window !== 'undefined' &&
+        (window.AudioContext || window.webkitAudioContext);
+      if (!Construtor) return false;
+      if (!contextoAudio) {
+        contextoAudio = new Construtor();
+        ganhoMestre = contextoAudio.createGain();
+        ganhoMestre.gain.value = emudecido ? 0 : volumeMestre * 0.05;
+        ganhoMestre.connect(contextoAudio.destination);
+      }
+      if (contextoAudio.state === 'suspended') contextoAudio.resume();
+      return true;
+    } catch (erro) {
+      return false;
+    }
+  }
+
+  function aplicarVolumeAoGanho() {
+    if (!ganhoMestre || !contextoAudio) return;
+    try {
+      ganhoMestre.gain.setTargetAtTime(
+        emudecido ? 0 : volumeMestre * 0.05,
+        contextoAudio.currentTime,
+        0.01
+      );
+    } catch (erro) {
+      // Ignora falhas de automação de parâmetro.
+    }
+  }
+
+  function tocarSom(frequencia, duracao, tipo) {
+    if (emudecido) return false;
+    if (!contextoAudio) return false;
+    try {
+      var oscilador = contextoAudio.createOscillator();
+      var ganhoNota = contextoAudio.createGain();
+      oscilador.type = tipo || 'square';
+      oscilador.frequency.value = frequencia;
+      ganhoNota.gain.value = 1;
+      oscilador.connect(ganhoNota);
+      ganhoNota.connect(ganhoMestre || contextoAudio.destination);
+      oscilador.start();
+      ganhoNota.gain.exponentialRampToValueAtTime(0.001, contextoAudio.currentTime + (duracao || 0.08));
+      oscilador.stop(contextoAudio.currentTime + (duracao || 0.08));
+      return true;
+    } catch (erro) {
+      return false;
+    }
+  }
+
+  // Compatível com o MVP: snd(freq, dur, tipo).
+  function snd(frequencia, duracao, tipo) {
+    return tocarSom(frequencia, duracao === undefined ? 0.08 : duracao, tipo || 'square');
+  }
+
+  function setMuted(valor) {
+    emudecido = Boolean(valor);
+    aplicarVolumeAoGanho();
+    salvarPreferencias();
+  }
+
+  function isMuted() {
+    return emudecido;
+  }
+
+  function alternarMudo() {
+    setMuted(!emudecido);
+    return emudecido;
+  }
+
+  function definirVolumeMestre(valor) {
+    volumeMestre = Math.max(0, Math.min(1, Number(valor) || 0));
+    aplicarVolumeAoGanho();
+    salvarPreferencias();
+  }
+
+  function obterVolumeMestre() {
+    return volumeMestre;
+  }
+
+  // SFX revisados: presets nomeados em vez de números mágicos espalhados.
+  var SFX = {
+    ataque: { freq: 300, dur: 0.06, tipo: 'square' },
+    esquiva: { freq: 500, dur: 0.05, tipo: 'triangle' },
+    magia: { freq: 900, dur: 0.07, tipo: 'square' },
+    danoJogador: { freq: 110, dur: 0.2, tipo: 'sawtooth' },
+    acertoInimigo: { freq: 220, dur: 0.08, tipo: 'square' },
+    runaOk: { freq: 850, dur: 0.2, tipo: 'triangle' },
+    runaErro: { freq: 110, dur: 0.3, tipo: 'sawtooth' },
+    coletar: { freq: 1000, dur: 0.3, tipo: 'triangle' },
+    coracao: { freq: 800, dur: 0.1, tipo: 'triangle' },
+    golpeChefe: { freq: 80, dur: 0.4, tipo: 'sawtooth' },
+    acertoChefe: { freq: 200, dur: 0.1, tipo: 'square' },
+    interruptorLiga: { freq: 700, dur: 0.15, tipo: 'triangle' },
+    interruptorDesliga: { freq: 400, dur: 0.15, tipo: 'triangle' },
+    avancoDialogo: { freq: 600, dur: 0.04, tipo: 'square' },
+    escolha: { freq: 750, dur: 0.06, tipo: 'square' },
+    porta: { freq: 350, dur: 0.25, tipo: 'triangle' }
+  };
+
+  function tocarEfeito(nome) {
+    var preset = SFX[nome];
+    if (!preset) return false;
+    if (nome === 'runaOk') {
+      // Arpejo ascendente de confirmação (variação do bip do MVP).
+      tocarSom(preset.freq, preset.dur, preset.tipo);
+      return true;
+    }
+    return tocarSom(preset.freq, preset.dur, preset.tipo);
+  }
+
+  var SistemaAudio = {
+    desbloquearAudio: desbloquearAudio,
+    tocarSom: tocarSom,
+    snd: snd,
+    setMuted: setMuted,
+    isMuted: isMuted,
+    alternarMudo: alternarMudo,
+    definirVolumeMestre: definirVolumeMestre,
+    obterVolumeMestre: obterVolumeMestre,
+    tocarEfeito: tocarEfeito,
+    SFX: SFX
+  };
+
+  var raiz = (globalThis.Cristal = globalThis.Cristal || {});
+  raiz.Audio = SistemaAudio;
+})();
+
+;
+/* === systems/dialogue.js === */
+/**
+ * src/systems/dialogue.js — Sistema de diálogo v2
+ * Frente F0-Systems. Sem dependências externas, sem fetch.
+ *
+ * Corrige a dívida técnica do MVP (typewriter incrementado no render):
+ * o contador do typewriter avança em updateDialogue(), que deve ser
+ * chamado no passo fixo de 60 Hz. O render só LÊ o texto visível.
+ *
+ * Integração no loop principal (passo fixo):
+ *   if (Dialogue.isDialogueActive()) Dialogue.updateDialogue();
+ * No render, usar Dialogue.obterLinhaAtual() + Dialogue.obterTextoVisivel().
+ *
+ * Formatos de linha aceitos:
+ *   ['Kael', 'Texto...']                       (legado, compatível com say())
+ *   { name: 'Kael', text: 'Texto...', portrait: 'kael' }  (novo, retrato opcional)
+ *
+ * Regras de design (02_GAME_DESIGN.md §8): ≤180 caracteres por caixa,
+ * ≤4 linhas de ~45 caracteres, typewriter 2 frames/letra.
+ */
+(function sistemaDialogo() {
+  'use strict';
+
+  var MAX_CARACTERES_POR_CAIXA = 180;
+  var MAX_LINHAS_POR_CAIXA = 4;
+  var CARACTERES_POR_LINHA = 45;
+  var FRAMES_POR_LETRA = 2;
+
+  var filaDialogo = [];
+  var indiceLinhaAtual = 0;
+  var contadorTypewriter = 0;
+  var dialogoAtivo = false;
+  var callbackAoConcluir = null;
+  var provedorFlags = null;
+
+  var modoEscolha = false;
+  var opcoesEscolhaVisiveis = [];
+  var indiceEscolhaAtual = 0;
+  var callbackEscolha = null;
+
+  function definirProvedorFlags(flagsOuFuncao) {
+    provedorFlags = flagsOuFuncao;
+  }
+
+  function lerFlags() {
+    if (typeof provedorFlags === 'function') return provedorFlags() || {};
+    return provedorFlags || {};
+  }
+
+  function normalizarLinha(linha) {
+    var nome = 'Narrador';
+    var texto = '';
+    var retrato = null;
+    if (Array.isArray(linha)) {
+      nome = String(linha[0] || 'Narrador');
+      texto = String(linha[1] || '');
+    } else if (linha && typeof linha === 'object') {
+      nome = String(linha.name || linha.nome || linha.falante || 'Narrador');
+      texto = String(linha.text || linha.texto || '');
+      retrato = linha.portrait || linha.retrato || null;
+    }
+    if (texto.length > MAX_CARACTERES_POR_CAIXA) {
+      texto = texto.slice(0, MAX_CARACTERES_POR_CAIXA);
+    }
+    return { nome: nome, texto: texto, retrato: retrato };
+  }
+
+  function startDialogue(linhas, callback) {
+    if (!Array.isArray(linhas) || linhas.length === 0) return false;
+    filaDialogo = linhas.map(normalizarLinha);
+    indiceLinhaAtual = 0;
+    contadorTypewriter = 0;
+    callbackAoConcluir = typeof callback === 'function' ? callback : null;
+    modoEscolha = false;
+    opcoesEscolhaVisiveis = [];
+    callbackEscolha = null;
+    dialogoAtivo = true;
+    return true;
+  }
+
+  // Alias compatível com o MVP: say([[falante, texto]], cb).
+  function say(listaDePares, callback) {
+    return startDialogue(listaDePares, callback);
+  }
+
+  function obterLinhaAtual() {
+    if (!dialogoAtivo || filaDialogo.length === 0) return null;
+    return filaDialogo[indiceLinhaAtual] || null;
+  }
+
+  function totalLetrasLinhaAtual() {
+    var linha = obterLinhaAtual();
+    return linha ? linha.texto.length : 0;
+  }
+
+  function linhaAtualCompleta() {
+    return contadorTypewriter >= totalLetrasLinhaAtual() * FRAMES_POR_LETRA;
+  }
+
+  function obterTextoVisivel() {
+    var linha = obterLinhaAtual();
+    if (!linha) return '';
+    var visiveis = Math.floor(contadorTypewriter / FRAMES_POR_LETRA);
+    return linha.texto.slice(0, visiveis);
+  }
+
+  /**
+   * Avança o typewriter no PASSO FIXO (chamar 1x por update a 60 Hz).
+   * Nunca chamar no render.
+   */
+  function updateDialogue() {
+    if (!dialogoAtivo || modoEscolha) return;
+    if (!linhaAtualCompleta()) contadorTypewriter += 1;
+  }
+
+  function concluirDialogo() {
+    dialogoAtivo = false;
+    modoEscolha = false;
+    var callback = callbackAoConcluir;
+    callbackAoConcluir = null;
+    filaDialogo = [];
+    if (callback) callback();
+  }
+
+  /**
+   * Avança o diálogo (toque / botão A / teclado).
+   * Se o texto ainda está sendo digitado, completa a linha.
+   * Senão, vai para a próxima linha ou conclui.
+   * No modo escolha, confirma a opção selecionada.
+   */
+  function advanceDialogue() {
+    if (!dialogoAtivo) return false;
+    if (modoEscolha) return confirmarEscolha();
+    if (!linhaAtualCompleta()) {
+      contadorTypewriter = totalLetrasLinhaAtual() * FRAMES_POR_LETRA;
+      return 'texto-completado';
+    }
+    indiceLinhaAtual += 1;
+    contadorTypewriter = 0;
+    if (indiceLinhaAtual >= filaDialogo.length) {
+      concluirDialogo();
+      return 'dialogo-concluido';
+    }
+    return 'linha-avancada';
+  }
+
+  function isDialogueActive() {
+    return dialogoAtivo;
+  }
+
+  function estaEmEscolha() {
+    return dialogoAtivo && modoEscolha;
+  }
+
+  /**
+   * Apresenta 2–3 opções ao jogador.
+   * Cada opção: { label, value, reqFlag? } — opções com reqFlag só
+   * aparecem se a flag estiver ativa. Retrato do falante é opcional
+   * e vem da linha de diálogo corrente ({ name, portrait }).
+   */
+  function choice(opcoes, callback, flags) {
+    if (!Array.isArray(opcoes) || opcoes.length < 2) return false;
+    var tabelaFlags = flags || lerFlags();
+    var validas = opcoes
+      .filter(function (opcao) {
+        return opcao && typeof opcao.label === 'string' && 'value' in opcao;
+      })
+      .filter(function (opcao) {
+        if (!opcao.reqFlag) return true;
+        return Boolean(tabelaFlags[opcao.reqFlag]);
+      })
+      .slice(0, 3);
+    if (validas.length < 2) return false;
+    modoEscolha = true;
+    dialogoAtivo = true;
+    opcoesEscolhaVisiveis = validas.map(function (opcao) {
+      return { label: opcao.label, value: opcao.value };
+    });
+    indiceEscolhaAtual = 0;
+    callbackEscolha = typeof callback === 'function' ? callback : null;
+    return true;
+  }
+
+  function obterOpcoesEscolha() {
+    return opcoesEscolhaVisiveis.slice();
+  }
+
+  function obterIndiceEscolha() {
+    return indiceEscolhaAtual;
+  }
+
+  function moverSelecaoEscolha(direcao) {
+    if (!modoEscolha || opcoesEscolhaVisiveis.length === 0) return -1;
+    var total = opcoesEscolhaVisiveis.length;
+    indiceEscolhaAtual = (indiceEscolhaAtual + direcao + total) % total;
+    return indiceEscolhaAtual;
+  }
+
+  function confirmarEscolha() {
+    if (!modoEscolha) return false;
+    var escolhida = opcoesEscolhaVisiveis[indiceEscolhaAtual];
+    var callback = callbackEscolha;
+    modoEscolha = false;
+    callbackEscolha = null;
+    opcoesEscolhaVisiveis = [];
+    dialogoAtivo = false;
+    filaDialogo = [];
+    if (callback && escolhida) callback(escolhida.value);
+    return 'escolha-confirmada';
+  }
+
+  /** Quebra o texto em linhas de ~45 caracteres (word wrap). */
+  function quebrarTextoEmLinhas(texto, limite) {
+    var largura = limite || CARACTERES_POR_LINHA;
+    var linhas = [];
+    var linhaCorrente = '';
+    var palavras = String(texto || '').split(' ');
+    for (var i = 0; i < palavras.length; i++) {
+      var palavra = palavras[i];
+      var candidata = linhaCorrente ? linhaCorrente + ' ' + palavra : palavra;
+      if (candidata.length > largura && linhaCorrente) {
+        linhas.push(linhaCorrente);
+        linhaCorrente = palavra;
+      } else {
+        linhaCorrente = candidata;
+      }
+    }
+    if (linhaCorrente) linhas.push(linhaCorrente);
+    return linhas.slice(0, MAX_LINHAS_POR_CAIXA);
+  }
+
+  var SistemaDialogo = {
+    startDialogue: startDialogue,
+    say: say,
+    advanceDialogue: advanceDialogue,
+    updateDialogue: updateDialogue,
+    isDialogueActive: isDialogueActive,
+    estaEmEscolha: estaEmEscolha,
+    choice: choice,
+    obterOpcoesEscolha: obterOpcoesEscolha,
+    obterIndiceEscolha: obterIndiceEscolha,
+    moverSelecaoEscolha: moverSelecaoEscolha,
+    confirmarEscolha: confirmarEscolha,
+    obterLinhaAtual: obterLinhaAtual,
+    obterTextoVisivel: obterTextoVisivel,
+    linhaAtualCompleta: linhaAtualCompleta,
+    quebrarTextoEmLinhas: quebrarTextoEmLinhas,
+    definirProvedorFlags: definirProvedorFlags,
+    MAX_CARACTERES_POR_CAIXA: MAX_CARACTERES_POR_CAIXA,
+    MAX_LINHAS_POR_CAIXA: MAX_LINHAS_POR_CAIXA,
+    CARACTERES_POR_LINHA: CARACTERES_POR_LINHA,
+    FRAMES_POR_LETRA: FRAMES_POR_LETRA
+  };
+
+  var raiz = (globalThis.Cristal = globalThis.Cristal || {});
+  raiz.Dialogue = SistemaDialogo;
+})();
+
+;
+/* === systems/entities.js === */
+/**
+ * src/systems/entities.js — Entidades genéricas + tabelas de inimigos e chefes
+ * Frente F0-Systems. Sem dependências externas, sem fetch.
+ *
+ * Cada entidade interativa expõe interact(jogo), onde `jogo` é o contexto:
+ *   { flags, dialogue, audio, ui, mostrarMensagem(texto), irParaMapa(id, spawn) }
+ * As funções toleram campos ausentes (encadeamento defensivo) para que o
+ * módulo funcione isolado em testes.
+ *
+ * Inimigos e chefes são 100% dirigidos por tabelas (ENEMIES / BOSS_PATTERNS):
+ * nada de if/else espalhados pelo update para cada tipo.
+ */
+(function sistemaEntidades() {
+  'use strict';
+
+  // ---------------------------------------------------------------------------
+  // Tabela de inimigos: ENEMIES = { tipo: { hp, speed, dmg, ai, descricao, draw } }
+  // speed em px/frame (passo 60 Hz), dmg em pontos de vida (jogador tem 8).
+  // ---------------------------------------------------------------------------
+  var ENEMIES = {
+    slime: {
+      hp: 2,
+      speed: 0.5,
+      dmg: 1,
+      ai: 'chase',
+      raioPercepcao: 70,
+      descricao: 'Slime corrompido: persegue o jogador quando perto.',
+      draw: function desenharSlime(e, R) {
+        var piscando = e.tempoFlash > 0;
+        R(piscando ? '#fff' : '#8a3fb5', e.x - 1, e.y + 2, 12, 9);
+        R(piscando ? '#fff' : '#a65ad0', e.x + 1, e.y, 8, 4);
+        R('#fff', e.x + 2, e.y + 4, 2, 2);
+        R('#fff', e.x + 7, e.y + 4, 2, 2);
+      }
+    },
+    rootBat: {
+      hp: 1,
+      speed: 0.8,
+      dmg: 1,
+      ai: 'swoop',
+      raioPercepcao: 90,
+      descricao: 'Morcego de raiz: vagueia e investe em mergulho contra o jogador.',
+      draw: function desenharMorcego(e, R) {
+        var piscando = e.tempoFlash > 0;
+        var asa = e.tempoAnimacao % 20 < 10 ? -2 : 2;
+        R(piscando ? '#fff' : '#3a2a4a', e.x - 3, e.y + 2 + asa, 5, 3);
+        R(piscando ? '#fff' : '#3a2a4a', e.x + 8, e.y + 2 - asa, 5, 3);
+        R(piscando ? '#fff' : '#5a3a6a', e.x + 1, e.y + 2, 8, 6);
+        R('#f66', e.x + 3, e.y + 4, 2, 2);
+        R('#f66', e.x + 6, e.y + 4, 2, 2);
+      }
+    }
+  };
+
+  function criarInimigo(tipo, x, y) {
+    var definicao = ENEMIES[tipo];
+    if (!definicao) return null;
+    return {
+      kind: tipo,
+      x: x,
+      y: y,
+      tamanho: 10,
+      vida: definicao.hp,
+      vidaMaxima: definicao.hp,
+      velocidade: definicao.speed,
+      dano: definicao.dmg,
+      comportamento: definicao.ai,
+      tempoPensar: 0,
+      vx: 0,
+      vy: 0,
+      kx: 0,
+      ky: 0,
+      tempoFlash: 0,
+      tempoAnimacao: 0,
+      idGolpeRecebido: -1
+    };
+  }
+
+  function definirDesenhoInimigo(inimigo, R) {
+    var definicao = ENEMIES[inimigo.kind];
+    if (definicao && typeof definicao.draw === 'function') definicao.draw(inimigo, R);
+  }
+
+  // Comportamentos de IA indexados por nome (despacho por tabela).
+  var COMPORTAMENTOS_IA = {
+    chase: function perseguir(inimigo, contexto) {
+      var dx = contexto.jogador.x - inimigo.x;
+      var dy = contexto.jogador.y - inimigo.y;
+      var dist = Math.hypot(dx, dy) || 1;
+      var alcance = (ENEMIES[inimigo.kind] || {}).raioPercepcao || 70;
+      if (dist < alcance) return { vx: (dx / dist) * inimigo.velocidade, vy: (dy / dist) * inimigo.velocidade };
+      return vagar(inimigo);
+    },
+    swoop: function mergulhar(inimigo, contexto) {
+      var dx = contexto.jogador.x - inimigo.x;
+      var dy = contexto.jogador.y - inimigo.y;
+      var dist = Math.hypot(dx, dy) || 1;
+      var alcance = (ENEMIES[inimigo.kind] || {}).raioPercepcao || 90;
+      if (inimigo.tempoInvestida > 0) {
+        inimigo.tempoInvestida -= 1;
+        return { vx: inimigo.vx, vy: inimigo.vy };
+      }
+      if (dist < alcance && inimigo.tempoRecargaInvestida <= 0) {
+        inimigo.tempoInvestida = 25;
+        inimigo.tempoRecargaInvestida = 120;
+        var forca = inimigo.velocidade * 2.2;
+        inimigo.vx = (dx / dist) * forca;
+        inimigo.vy = (dy / dist) * forca;
+        return { vx: inimigo.vx, vy: inimigo.vy };
+      }
+      if (inimigo.tempoRecargaInvestida > 0) inimigo.tempoRecargaInvestida -= 1;
+      return vagar(inimigo);
+    }
+  };
+
+  function vagar(inimigo) {
+    if (inimigo.tempoPensar <= 0) {
+      inimigo.tempoPensar = 50 + Math.random() * 60;
+      inimigo.vx = (Math.random() - 0.5) * 0.7;
+      inimigo.vy = (Math.random() - 0.5) * 0.7;
+    }
+    inimigo.tempoPensar -= 1;
+    return { vx: inimigo.vx, vy: inimigo.vy };
+  }
+
+  /** Atualiza a IA sem if/else por tipo: despacha pela tabela. */
+  function atualizarInteligencia(inimigo, contexto) {
+    var comportamento = COMPORTAMENTOS_IA[inimigo.comportamento];
+    if (typeof comportamento !== 'function') comportamento = COMPORTAMENTOS_IA.chase;
+    return comportamento(inimigo, contexto);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Entidades interativas (NPC, Sign, Switch, Door, Pickup)
+  // ---------------------------------------------------------------------------
+  function dialogoSeguro(jogo, linhas, callback) {
+    if (jogo && jogo.dialogue && typeof jogo.dialogue.startDialogue === 'function') {
+      jogo.dialogue.startDialogue(linhas, callback);
+      return 'dialogo';
+    }
+    return 'sem-dialogo';
+  }
+
+  function mensagemSegura(jogo, texto) {
+    if (jogo && typeof jogo.mostrarMensagem === 'function') jogo.mostrarMensagem(texto);
+  }
+
+  function criarNPC(dados) {
+    var npc = {
+      tipo: 'npc',
+      x: dados.x || 0,
+      y: dados.y || 0,
+      nome: dados.nome || 'Aldeão',
+      retrato: dados.retrato || null,
+      falas: dados.falas || [['???', '...']],
+      falaCondicional: dados.falaCondicional || null,
+      interact: function interagirNPC(jogo) {
+        var falas = npc.falas;
+        if (
+          npc.falaCondicional &&
+          jogo && jogo.flags &&
+          jogo.flags[npc.falaCondicional.flag]
+        ) {
+          falas = npc.falaCondicional.falas;
+        }
+        var linhas = falas.map(function (fala) {
+          return { name: npc.nome, text: fala[1] || fala.text || '', portrait: npc.retrato };
+        });
+        return dialogoSeguro(jogo, linhas.length ? linhas : npc.falas);
+      }
+    };
+    return npc;
+  }
+
+  function criarPlaca(dados) {
+    var placa = {
+      tipo: 'sign',
+      x: dados.x || 0,
+      y: dados.y || 0,
+      titulo: dados.titulo || 'Inscrição',
+      texto: dados.texto || '...',
+      flagLeitura: dados.flagLeitura || 'sign_read',
+      interact: function interagirPlaca(jogo) {
+        if (jogo && jogo.flags) jogo.flags[placa.flagLeitura] = true;
+        return dialogoSeguro(jogo, [
+          { name: placa.titulo, text: placa.texto },
+          { name: 'Lumi', text: 'Interessante... isso parece importante, herói.', portrait: 'lumi' }
+        ]);
+      }
+    };
+    return placa;
+  }
+
+  function criarInterruptor(dados) {
+    var interruptor = {
+      tipo: 'switch',
+      x: dados.x || 0,
+      y: dados.y || 0,
+      id: dados.id || 'interruptor',
+      ligado: Boolean(dados.ligado),
+      interact: function interagirInterruptor(jogo) {
+        interruptor.ligado = !interruptor.ligado;
+        if (jogo && jogo.flags) jogo.flags['switch_' + interruptor.id] = interruptor.ligado;
+        if (jogo && jogo.audio && typeof jogo.audio.tocarEfeito === 'function') {
+          jogo.audio.tocarEfeito(interruptor.ligado ? 'interruptorLiga' : 'interruptorDesliga');
+        }
+        mensagemSegura(jogo, interruptor.ligado ? 'Algo rangeu ao longe...' : 'O mecanismo se aquietou.');
+        return interruptor.ligado ? 'ligado' : 'desligado';
+      }
+    };
+    return interruptor;
+  }
+
+  function criarPorta(dados) {
+    var porta = {
+      tipo: 'door',
+      x: dados.x || 0,
+      y: dados.y || 0,
+      destinoMapa: dados.destinoMapa || null,
+      pontoChegada: dados.pontoChegada || null,
+      flagRequisito: dados.flagRequisito || null,
+      mensagemTrancada: dados.mensagemTrancada || 'Trancado. Falta uma chave.',
+      interact: function interagirPorta(jogo) {
+        var liberada = !porta.flagRequisito ||
+          (jogo && jogo.flags && jogo.flags[porta.flagRequisito]);
+        if (!liberada) {
+          mensagemSegura(jogo, porta.mensagemTrancada);
+          return 'trancada';
+        }
+        if (porta.destinoMapa && jogo && typeof jogo.irParaMapa === 'function') {
+          jogo.irParaMapa(porta.destinoMapa, porta.pontoChegada);
+          return 'travessia';
+        }
+        return 'aberta';
+      }
+    };
+    return porta;
+  }
+
+  var EFEITOS_COLETAVEL = {
+    chave: function coletarChave(coletavel, jogo) {
+      if (jogo && jogo.flags) jogo.flags.has_key_c1 = true;
+      mensagemSegura(jogo, 'Chave obtida! Vá ao portão.');
+      return 'chave';
+    },
+    coracao: function coletarCoracao(coletavel, jogo) {
+      if (jogo && jogo.jogador) {
+        jogo.jogador.hp = Math.min(jogo.jogador.hpMax || 8, jogo.jogador.hp + 2);
+      }
+      return 'cura';
+    },
+    pocao: function coletarPocao(coletavel, jogo) {
+      if (jogo && jogo.flags) jogo.flags.pocoes = (jogo.flags.pocoes || 0) + 1;
+      mensagemSegura(jogo, 'Poção guardada! (+4 de vida quando usada)');
+      return 'pocao';
+    }
+  };
+
+  function criarColetavel(dados) {
+    var coletavel = {
+      tipo: 'pickup',
+      classe: dados.classe || 'coracao',
+      x: dados.x || 0,
+      y: dados.y || 0,
+      coletado: false,
+      interact: function interagirColetavel(jogo) {
+        if (coletavel.coletado) return 'ja-coletado';
+        var efeito = EFEITOS_COLETAVEL[coletavel.classe];
+        if (typeof efeito !== 'function') return 'sem-efeito';
+        coletavel.coletado = true;
+        if (jogo && jogo.audio && typeof jogo.audio.tocarEfeito === 'function') {
+          jogo.audio.tocarEfeito('coletar');
+        }
+        return efeito(coletavel, jogo);
+      }
+    };
+    return coletavel;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Chefes como máquina de estados dirigida por tabela.
+  // Todo golpe forte tem telegraph visível ≥ 30 frames (ver 02_GAME_DESIGN.md).
+  // ---------------------------------------------------------------------------
+  var BOSS_PATTERNS = {
+    guardiaoRaizes: {
+      nome: 'Guardião das Raízes',
+      vidaMaxima: 24,
+      tamanho: 28,
+      estadoInicial: 'walk',
+      estados: {
+        walk: { duracao: 90, proximo: 'telegraph' },
+        telegraph: { duracao: 40, proximo: 'active' },
+        active: { duracao: 14, proximo: 'rest' },
+        rest: { duracao: 50, proximo: 'walk' }
+      },
+      faseEnfurecida: {
+        limiarHp: 12,
+        duracaoWalk: 65,
+        disparaRaizesRadiais: 8,
+        velocidadeRaiz: 1.3
+      }
+    }
+  };
+
+  function criarChefe(tipo) {
+    var definicao = BOSS_PATTERNS[tipo];
+    if (!definicao) return null;
+    return {
+      kind: tipo,
+      x: 106,
+      y: 28,
+      tamanho: definicao.tamanho,
+      vida: definicao.vidaMaxima,
+      vidaMaxima: definicao.vidaMaxima,
+      estado: definicao.estadoInicial,
+      tempoEstado: definicao.estados[definicao.estadoInicial].duracao,
+      tempoFlash: 0,
+      idGolpeRecebido: -1,
+      finalizado: false,
+      contadorMorte: 0
+    };
+  }
+
+  /**
+   * Avança a máquina de estados do chefe de forma genérica.
+   * contexto: { xJogador, yJogador, aoTelegraph(), aoGolpeForte(raio),
+   *              aoDispararRaizes(qtd, velocidade), aoDescansar() }
+   */
+  function atualizarChefe(chefe, contexto) {
+    var definicao = BOSS_PATTERNS[chefe.kind];
+    if (!definicao) return chefe.estado;
+    if (chefe.tempoFlash > 0) chefe.tempoFlash -= 1;
+    chefe.tempoEstado -= 1;
+    var enfurecido = chefe.vida <= definicao.faseEnfurecida.limiarHp;
+    var centroX = chefe.x + chefe.tamanho / 2;
+    var centroY = chefe.y + chefe.tamanho / 2;
+    var dx = contexto.xJogador - centroX;
+    var dy = contexto.yJogador - centroY;
+    var dist = Math.hypot(dx, dy) || 1;
+
+    if (chefe.estado === 'walk') {
+      var passo = enfurecido ? 0.55 : 0.4;
+      chefe.x += (dx / dist) * passo;
+      chefe.y += (dy / dist) * passo;
+    }
+
+    if (chefe.tempoEstado > 0) return chefe.estado;
+    var atual = definicao.estados[chefe.estado];
+    var proximo = atual ? atual.proximo : definicao.estadoInicial;
+
+    if (chefe.estado === 'walk' && contexto.aoTelegraph) contexto.aoTelegraph();
+    if (proximo === 'active' && contexto.aoGolpeForte) {
+      contexto.aoGolpeForte(46);
+      if (enfurecido && contexto.aoDispararRaizes) {
+        contexto.aoDispararRaizes(
+          definicao.faseEnfurecida.disparaRaizesRadiais,
+          definicao.faseEnfurecida.velocidadeRaiz
+        );
+      }
+    }
+    if (proximo === 'walk' && contexto.aoDescansar) contexto.aoDescansar();
+
+    chefe.estado = proximo;
+    var duracao = definicao.estados[proximo].duracao;
+    if (proximo === 'walk' && enfurecido) duracao = definicao.faseEnfurecida.duracaoWalk;
+    chefe.tempoEstado = duracao;
+    return chefe.estado;
+  }
+
+  var SistemaEntidades = {
+    ENEMIES: ENEMIES,
+    BOSS_PATTERNS: BOSS_PATTERNS,
+    criarInimigo: criarInimigo,
+    definirDesenhoInimigo: definirDesenhoInimigo,
+    atualizarInteligencia: atualizarInteligencia,
+    criarNPC: criarNPC,
+    criarPlaca: criarPlaca,
+    criarInterruptor: criarInterruptor,
+    criarPorta: criarPorta,
+    criarColetavel: criarColetavel,
+    criarChefe: criarChefe,
+    atualizarChefe: atualizarChefe
+  };
+
+  var raiz = (globalThis.Cristal = globalThis.Cristal || {});
+  raiz.Entities = SistemaEntidades;
+})();
+
+;
+/* === systems/ui.js === */
+/**
+ * src/systems/ui.js — Pausa, menu, toast e fade de transição
+ * Frente F0-Systems. Sem dependências externas, sem fetch, sem <form>.
+ *
+ * - Pausa automática em visibilitychange/blur + botão de menu.
+ * - Menu: continuar, mudo, reiniciar sala.
+ * - Toast posicionado para NÃO sobrepor a linha de objetivo nem a caixa
+ *   de diálogo em telas pequenas (canvas 240x160).
+ * - Fade helper para transição de mapa (padrão: 12 frames).
+ *
+ * Este módulo guarda estado e expõe dados; o render do jogo desenha
+ * a partir de obterToast(), obterAlphaFade() e obterOpcoesMenu().
+ */
+(function sistemaUI() {
+  'use strict';
+
+  var ALTURA_LOGICA = 160;
+  var Y_OBJETIVO = 22;
+  var Y_TOAST_PADRAO = 38;
+  var DURACAO_TOAST_PADRAO = 150;
+  var DURACAO_FADE_PADRAO = 12;
+
+  var jogoPausado = false;
+  var menuAberto = false;
+  var indiceOpcaoMenu = 0;
+  var aoReiniciarSala = null;
+
+  var textoToast = '';
+  var tempoToast = 0;
+  var filaToast = [];
+
+  var alphaFade = 0;
+  var faseFade = 'visivel'; // visivel | escurecendo | clareando
+  var tempoFade = 0;
+  var duracaoFade = DURACAO_FADE_PADRAO;
+  var callbackFade = null;
+
+  // ---------------------------------------------------------------------------
+  // Pausa + menu
+  // ---------------------------------------------------------------------------
+  function pausarJogo() {
+    jogoPausado = true;
+    menuAberto = true;
+    indiceOpcaoMenu = 0;
+  }
+
+  function continuarJogo() {
+    jogoPausado = false;
+    menuAberto = false;
+  }
+
+  function alternarPausa() {
+    if (jogoPausado) continuarJogo();
+    else pausarJogo();
+  }
+
+  function estaPausado() {
+    return jogoPausado;
+  }
+
+  function menuEstaAberto() {
+    return menuAberto;
+  }
+
+  /**
+   * Pausa automática ao perder foco. Chamar uma vez na inicialização.
+   * Seguro em ambiente sem DOM (testes node): não faz nada.
+   */
+  function iniciarPausaAutomatica(callbacks) {
+    if (callbacks && typeof callbacks.aoReiniciarSala === 'function') {
+      aoReiniciarSala = callbacks.aoReiniciarSala;
+    }
+    if (typeof document === 'undefined') return;
+    document.addEventListener('visibilitychange', function aoVisibilidade() {
+      if (document.hidden) pausarJogo();
+    });
+    if (typeof window !== 'undefined') {
+      window.addEventListener('blur', function aoDesfocar() {
+        pausarJogo();
+      });
+    }
+  }
+
+  function definirAcaoReiniciarSala(callback) {
+    if (typeof callback === 'function') aoReiniciarSala = callback;
+  }
+
+  function obterOpcoesMenu(estaEmudecido) {
+    return [
+      { id: 'continuar', rotulo: 'Continuar' },
+      { id: 'mudo', rotulo: estaEmudecido ? 'Som: desligado' : 'Som: ligado' },
+      { id: 'reiniciar', rotulo: 'Reiniciar sala' }
+    ];
+  }
+
+  function obterIndiceOpcaoMenu() {
+    return indiceOpcaoMenu;
+  }
+
+  function moverOpcaoMenu(direcao) {
+    var total = obterOpcoesMenu(false).length;
+    indiceOpcaoMenu = (indiceOpcaoMenu + direcao + total) % total;
+    return indiceOpcaoMenu;
+  }
+
+  /**
+   * Executa a opção do menu. `jogo` pode trazer { audio } para o mudo.
+   * Retorna o id executado.
+   */
+  function executarOpcaoMenu(idOuIndice, jogo) {
+    var opcoes = obterOpcoesMenu(
+      Boolean(jogo && jogo.audio && typeof jogo.audio.isMuted === 'function' && jogo.audio.isMuted())
+    );
+    var opcao = typeof idOuIndice === 'number' ? opcoes[idOuIndice] : null;
+    if (!opcao && typeof idOuIndice === 'string') {
+      for (var i = 0; i < opcoes.length; i++) {
+        if (opcoes[i].id === idOuIndice) { opcao = opcoes[i]; break; }
+      }
+    }
+    if (!opcao) return 'invalida';
+    if (opcao.id === 'continuar') {
+      continuarJogo();
+      return 'continuar';
+    }
+    if (opcao.id === 'mudo') {
+      if (jogo && jogo.audio && typeof jogo.audio.alternarMudo === 'function') {
+        jogo.audio.alternarMudo();
+      }
+      return 'mudo';
+    }
+    if (opcao.id === 'reiniciar') {
+      if (aoReiniciarSala) aoReiniciarSala();
+      continuarJogo();
+      return 'reiniciar';
+    }
+    return 'invalida';
+  }
+
+  /**
+   * Liga um elemento DOM como botão de menu via pointer events
+   * (sem <form>). Seguro sem DOM.
+   */
+  function ligarBotaoMenu(elemento, acao) {
+    if (!elemento || typeof elemento.addEventListener !== 'function') return;
+    if (typeof acao !== 'function') return;
+    elemento.addEventListener('pointerdown', function aoPressionarMenu(evento) {
+      if (evento && typeof evento.preventDefault === 'function') evento.preventDefault();
+      acao();
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Toast (mensagem curta) — sem sobrepor objetivo nem diálogo
+  // ---------------------------------------------------------------------------
+  function mostrarToast(texto, duracao) {
+    if (!texto) return;
+    filaToast.push({ texto: String(texto), tempo: duracao || DURACAO_TOAST_PADRAO });
+    if (tempoToast <= 0) exibirProximoToast();
+  }
+
+  function exibirProximoToast() {
+    var proximo = filaToast.shift();
+    if (!proximo) {
+      textoToast = '';
+      tempoToast = 0;
+      return;
+    }
+    textoToast = proximo.texto;
+    tempoToast = proximo.tempo;
+  }
+
+  /** Avança o timer no passo fixo. Suprime enquanto o diálogo está ativo. */
+  function updateToast(dialogoAtivo) {
+    if (tempoToast <= 0) {
+      if (!dialogoAtivo) exibirProximoToast();
+      return;
+    }
+    if (dialogoAtivo) return; // espera a caixa de diálogo fechar
+    tempoToast -= 1;
+    if (tempoToast <= 0) exibirProximoToast();
+  }
+
+  function toastVisivel(dialogoAtivo) {
+    if (dialogoAtivo) return false;
+    return tempoToast > 0 && textoToast !== '';
+  }
+
+  function obterToast() {
+    return { texto: textoToast, tempo: tempoToast };
+  }
+
+  /**
+   * Linha Y do toast: abaixo do objetivo (Y=22) e longe da caixa de
+   * diálogo (y 100–156), funcionando no canvas 240x160.
+   */
+  function obterYDoToast() {
+    return Y_TOAST_PADRAO;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Fade de transição de mapa
+  // ---------------------------------------------------------------------------
+  function iniciarTransicao(callback, duracao) {
+    faseFade = 'escurecendo';
+    tempoFade = 0;
+    duracaoFade = duracao || DURACAO_FADE_PADRAO;
+    callbackFade = typeof callback === 'function' ? callback : null;
+  }
+
+  /** Avança o fade no passo fixo. Troca o mapa no ponto mais escuro. */
+  function updateFade() {
+    if (faseFade === 'visivel') return;
+    tempoFade += 1;
+    if (faseFade === 'escurecendo') {
+      alphaFade = Math.min(1, tempoFade / duracaoFade);
+      if (alphaFade >= 1) {
+        var callback = callbackFade;
+        callbackFade = null;
+        if (callback) callback();
+        faseFade = 'clareando';
+        tempoFade = 0;
+      }
+    } else if (faseFade === 'clareando') {
+      alphaFade = Math.max(0, 1 - tempoFade / duracaoFade);
+      if (alphaFade <= 0) {
+        faseFade = 'visivel';
+        tempoFade = 0;
+      }
+    }
+  }
+
+  function obterAlphaFade() {
+    return alphaFade;
+  }
+
+  function transicaoAtiva() {
+    return faseFade !== 'visivel';
+  }
+
+  function alturaLogica() {
+    return ALTURA_LOGICA;
+  }
+
+  var SistemaUI = {
+    pausarJogo: pausarJogo,
+    continuarJogo: continuarJogo,
+    alternarPausa: alternarPausa,
+    estaPausado: estaPausado,
+    menuEstaAberto: menuEstaAberto,
+    iniciarPausaAutomatica: iniciarPausaAutomatica,
+    definirAcaoReiniciarSala: definirAcaoReiniciarSala,
+    obterOpcoesMenu: obterOpcoesMenu,
+    obterIndiceOpcaoMenu: obterIndiceOpcaoMenu,
+    moverOpcaoMenu: moverOpcaoMenu,
+    executarOpcaoMenu: executarOpcaoMenu,
+    ligarBotaoMenu: ligarBotaoMenu,
+    mostrarToast: mostrarToast,
+    updateToast: updateToast,
+    toastVisivel: toastVisivel,
+    obterToast: obterToast,
+    obterYDoToast: obterYDoToast,
+    iniciarTransicao: iniciarTransicao,
+    updateFade: updateFade,
+    obterAlphaFade: obterAlphaFade,
+    transicaoAtiva: transicaoAtiva,
+    Y_OBJETIVO: Y_OBJETIVO,
+    DURACAO_FADE_PADRAO: DURACAO_FADE_PADRAO
+  };
+
+  // Evita referência não definida em ambientes sem altura fixa.
+  void alturaLogica;
+
+  var raiz = (globalThis.Cristal = globalThis.Cristal || {});
+  raiz.UI = SistemaUI;
+})();
+
+;
+/* === maps/brisamar.js === */
+// brisamar.js — F1-Content :: mapa da vila inicial
+// Vila pacífica 20x15, sem combate (enemies: []).
+// Locais: casa de Kael (mãe), praça do festival, casa + lagoa do Mestre Orin,
+// saída leste para a floresta.
+//
+// Tiles: '#' sólido (muro/casa/árvore) · '.' grama · 'P' praça (passável) ·
+// 'T' barraca (sólido) · 'F' flores (passável) · 'W' água (sólido) ·
+// 'D' deck de pesca (passável).
+// Coordenadas de NPCs/objetos/saídas em TILES (tx, ty); o motor converte (*16).
+//
+// Propostas D-0X: nenhuma. Nenhuma mudança de lore nesta frente.
+// Sugestão p/ F0-Engine (opcional, sem quebrar nada se ignorado):
+//   exit.leaveDialog toca o diálogo 1x ao sair (idempotente pela flag).
+
+const MAP_BRISAMAR = {
+  id: "brisamar",
+  name: "Brisamar",
+  w: 20,
+  h: 15,
+  tiles: [
+    "####################",
+    "#.####..........WWW#",
+    "#.####..TPPPT...WWW#",
+    "#.####..PPPPP....D.#",
+    "#.......PPPPP......#",
+    "#.......PPPPP......#",
+    "#............####..#",
+    "#FF..........####..#",
+    "#............####..#",
+    "#....#.........#...#",
+    "#..................#",
+    "#.........FF.......#",
+    "#.##.......#........",
+    "#.FF.#.............#",
+    "####################",
+  ],
+  legend: {
+    "#": { solid: true, label: "muro/casa/árvore" },
+    ".": { solid: false, label: "grama" },
+    P: { solid: false, label: "praça" },
+    T: { solid: true, label: "barraca do festival" },
+    F: { solid: false, label: "flores" },
+    W: { solid: true, label: "água" },
+    D: { solid: false, label: "deck de pesca" },
+  },
+  zones: [
+    { id: "casa_kael", tx: 2, ty: 1, w: 4, h: 3, name: "Casa de Kael" },
+    { id: "praca", tx: 8, ty: 2, w: 5, h: 4, name: "Praça do festival" },
+    { id: "lagoa", tx: 16, ty: 1, w: 3, h: 2, name: "Lagoa do Orin" },
+    { id: "casa_orin", tx: 13, ty: 6, w: 4, h: 3, name: "Casa do Mestre Orin" },
+  ],
+  spawns: {
+    home: { tx: 3, ty: 6 },
+    fromForest: { tx: 17, ty: 12 },
+  },
+  exits: [
+    // Abertura na borda leste (tiles (18,12) e (19,12) são '.').
+    { tx: 18, ty: 12, w: 2, h: 1, to: "forest", spawn: "fromBrisamar", transition: "fade", leaveDialog: "starfall" },
+  ],
+  npcs: [
+    { id: "mae", name: "Mãe", tx: 3, ty: 4, face: "down", dialogs: { first: "wake_up", repeat: "mother_repeat" } },
+    { id: "darius", name: "Darius", tx: 10, ty: 4, face: "left", dialogs: { first: "darius_farewell", repeat: "darius_repeat" } },
+    { id: "morador", name: "Morador", tx: 9, ty: 5, face: "up", dialogs: { first: "festival_square" } },
+    { id: "orin", name: "Mestre Orin", tx: 16, ty: 3, face: "left", dialogs: { first: "orin_meet", repeat: "orin_repeat" } },
+  ],
+  objects: [
+    { type: "sign", tx: 6, ty: 5, dialog: "village_sign" },
+    { type: "dummy", tx: 15, ty: 4, name: "Boneco de treino", dialog: "orin_tutorial" },
+    { type: "stall", tx: 8, ty: 2, solid: true, name: "Barraca de doces" },
+    { type: "stall", tx: 12, ty: 2, solid: true, name: "Barraca de enfeites" },
+  ],
+  enemies: [],
+  music: "brisamar_theme",
+  // Ordem sugerida de história (só documentação; sem travas p/ evitar soft-lock):
+  // wake_up → festival_square → darius_farewell → orin_meet → orin_tutorial
+  // → starfall (ao sair a leste) → forest.
+  onEnter(game) {
+    if (game && game.flags && !game.flags.woke_up) game.playDialog("wake_up");
+  },
+};
+
+globalThis.MAP_BRISAMAR = MAP_BRISAMAR;
+
+;
+/* === maps/forest.js === */
+// forest.js — F1-Content :: Floresta dos Sussurros (Cap. 1)
+// Porte fiel do forest() do MVP (cristal-cap1.html) para MapDef, + novidades F1:
+//   + chave escondida num arbusto (alternativa ao enigma; não o substitui)
+//   + raízes negras decorativas animadas (overlay, não sólidas)
+//   + 2º inimigo: morcego-de-raiz (mesma dificuldade do slime)
+//   + pedra azul (marco que toca o diálogo de encontro da Lumi)
+//
+// COMPAT MVP (não mudar): LCG seed=7, corredores cl/ln idênticos, portão em
+// (27,3), runas azul(10,10)/verde(14,6)/vermelha(20,12), 7 slimes com o mesmo
+// algoritmo de spawn, inscrição, chave do enigma em (23,12), chefe 24HP.
+// Dificuldade: slime 2HP/contato 1 dano; morcego igual, só que mais rápido e
+// com telegraph >= 30f antes da investida. Hitboxes generosas (contato d<10).
+//
+// Propostas D-0X: nenhuma. Nenhuma mudança de lore nesta frente.
+
+function lcgForestTiles() {
+  const MW = 30, MH = 20;
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const M = [];
+  for (let j = 0; j < MH; j++) {
+    M[j] = [];
+    for (let i = 0; i < MW; i++) M[j][i] = (i < 1 || j < 1 || i > MW - 2 || j > MH - 2 || rnd() < .2) ? "#" : ".";
+  }
+  const cl = (a, b, c, d) => { for (let j = b; j <= d; j++) for (let i = a; i <= c; i++) M[j][i] = "."; };
+  const ln = (a, b, c, d) => { cl(Math.min(a, c), b, Math.max(a, c), b + 1); cl(c, Math.min(b, d), c + 1, Math.max(b, d) + 1); };
+  cl(1, 13, 7, 18); ln(2, 16, 10, 10); ln(10, 10, 14, 6); ln(14, 6, 20, 12); ln(20, 12, 27, 4);
+  M[3][27] = "G"; M[3][26] = "#"; M[3][28] = "#"; M[2][27] = "#";
+  return { tiles: M.map((row) => row.join("")), nextSeed: seed, rndState: () => seed };
+}
+
+// Spawns dos 7 slimes: algoritmo idêntico ao MVP (usa a sequência do LCG
+// após a geração do mapa; P inicial em (3,16) p/ o teste de distância).
+function slimeSpawns(grid) {
+  const T = 16;
+  const MW = 30, MH = 20;
+  const M = grid.map((row) => row.split(""));
+  const P = { x: 3 * T, y: 16 * T };
+  // Reexecuta o LCG até o estado pós-mapa para replicar a sequência do MVP.
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) { if (!(i < 1 || j < 1 || i > MW - 2 || j > MH - 2)) rnd(); }
+  const blocked = (ex, ey) => {
+    const s = 10;
+    const solidAt = (px, py) => {
+      const i = Math.floor(px / T), j = Math.floor(py / T);
+      if (i < 0 || j < 0 || i >= MW || j >= MH) return true;
+      const c = M[j][i];
+      return c === "#" || c === "G";
+    };
+    for (const [ax, ay] of [[0, 0], [s, 0], [0, s], [s, s]]) if (solidAt(ex + ax, ey + ay)) return true;
+    for (const o of [{ x: 4 * T, y: 14 * T }, { x: 10 * T, y: 10 * T }, { x: 14 * T, y: 6 * T }, { x: 20 * T, y: 12 * T }])
+      if (ex < o.x + T && ex + s > o.x && ey < o.y + T && ey + s > o.y) return true;
+    return false;
+  };
+  const out = [];
+  for (let n = 0; n < 500 && out.length < 7; n++) {
+    const i = 6 + Math.floor(rnd() * 22), j = 2 + Math.floor(rnd() * 16);
+    const e = { x: i * T + 3, y: j * T + 3 };
+    if (M[j][i] === "." && !blocked(e.x, e.y) && Math.hypot(e.x - P.x, e.y - P.y) > 90) out.push({ tx: i, ty: j });
+  }
+  return out;
+}
+
+const FOREST_TILES = lcgForestTiles().tiles;
+
+const MAP_FOREST = {
+  id: "forest",
+  name: "Floresta dos Sussurros",
+  w: 30,
+  h: 20,
+  tiles: FOREST_TILES,
+  legend: {
+    "#": { solid: true, label: "árvore" },
+    ".": { solid: false, label: "chão" },
+    G: { solid: true, label: "portão das ruínas" },
+  },
+  spawns: {
+    fromBrisamar: { tx: 3, ty: 16 },
+    fromRuin: { tx: 25, ty: 4 },
+  },
+  exits: [
+    // Casa ao sul do portão; exige a chave (do enigma OU do arbusto).
+    { tx: 27, ty: 4, to: "ruin_entry", spawn: "entry", req: "has_key_c1", transition: "fade" },
+    { tx: 1, ty: 15, w: 2, h: 4, to: "brisamar", spawn: "fromForest", transition: "fade" },
+  ],
+  sign: { tx: 4, ty: 14, dialog: "forest_sign" },
+  runes: [
+    { tx: 10, ty: 10, color: "#4a8cff", order: 0, name: "céu" },
+    { tx: 14, ty: 6, color: "#4ccf4c", order: 1, name: "folha" },
+    { tx: 20, ty: 12, color: "#ee4444", order: 2, name: "sangue da terra" },
+  ],
+  gate: { tx: 27, ty: 3 },
+  // Chave do enigma (compat MVP): surge em (23,12) ao ativar as 3 runas.
+  runeKeyDrop: { tx: 23, ty: 12 },
+  objects: [
+    { type: "landmark", kind: "pedra_azul", tx: 14, ty: 8, name: "Pedra azul", dialog: "lumi_meet", solid: false },
+    { type: "pickup", kind: "key", hidden: true, tx: 5, ty: 17, name: "Arbusto suspeito", dialog: "key_bush_found", setsFlag: "has_key_c1" },
+    // Raízes negras: overlay decorativo animado (nunca sólido, nunca bloqueia).
+    ...[
+      [3, 15], [8, 12], [12, 9], [13, 10], [15, 7],
+      [9, 8], [21, 10], [23, 12], [25, 10], [24, 6],
+    ].map(([tx, ty], k) => ({ type: "deco", kind: "darkroot", tx, ty, anim: true, phase: k % 4, solid: false })),
+  ],
+  enemyDefs: {
+    // Valores do MVP: 2HP, persegue a 70px, contato = 1 dano, 30% drop coração.
+    slime: { hp: 2, pursueRadius: 70, contactDamage: 1, heartDrop: 0.3 },
+    // Novo F1, mesma dificuldade: 2HP, contato 1 dano; investida com
+    // telegraph de 36f (pisca + guincho) e descanso de 50f após errar.
+    rootbat: { hp: 2, pursueRadius: 90, contactDamage: 1, heartDrop: 0.3, telegraph: 36, rest: 50, ai: "swoop" },
+  },
+  enemies: [
+    ...slimeSpawns(FOREST_TILES).map((s) => ({ kind: "slime", ...s })),
+    { kind: "rootbat", tx: 12, ty: 10 },
+    { kind: "rootbat", tx: 20, ty: 9 },
+    { kind: "rootbat", tx: 24, ty: 12 },
+  ],
+  music: "forest_theme",
+  onEnter(game) {
+    if (game && game.flags && !game.flags.met_lumi) { /* pedra azul (14,8) toca lumi_meet */ }
+  },
+};
+
+globalThis.MAP_FOREST = MAP_FOREST;
+globalThis.lcgForestTiles = lcgForestTiles;
+globalThis.slimeSpawns = slimeSpawns;
+
+;
+/* === maps/ruin_entry.js === */
+// ruin_entry.js — F1-Content :: Entrada da ruína (transição antes do chefe)
+// Mini-sala 15x10 (tela cheia, como a arena do MVP): porta sul vinda da
+// floresta → porta norte para a arena do Guardião das Raízes.
+// Sem combate: é respiro + tensão antes do chefe. Ao cruzar a porta norte,
+// o motor deve aplicar fade (transition: "fade") e abrir o diálogo
+// boss_intro; ao entrar na arena, o MVP restaura a vida (P.hp=8) — manter.
+//
+// Propostas D-0X: nenhuma. Nenhuma mudança de lore nesta frente.
+
+const MAP_RUIN_ENTRY = {
+  id: "ruin_entry",
+  name: "Entrada da Ruína",
+  w: 15,
+  h: 10,
+  tiles: [
+    "######DD#######",
+    "#.............#",
+    "#.T........T..#",
+    "#.............#",
+    "#.....###.....#",
+    "#.....#S#.....#",
+    "#.....###.....#",
+    "#.............#",
+    "#.............#",
+    "######DD#######",
+  ],
+  legend: {
+    "#": { solid: true, label: "parede de pedra" },
+    ".": { solid: false, label: "piso" },
+    D: { solid: false, label: "porta" },
+    T: { solid: false, label: "tocha (luz)" },
+    S: { solid: true, label: "inscrição antiga" },
+  },
+  zones: [
+    { id: "saguao", tx: 1, ty: 1, w: 13, h: 8, name: "Saguão da ruína" },
+  ],
+  spawns: {
+    entry: { tx: 7, ty: 8 },
+    fromBoss: { tx: 7, ty: 2 },
+  },
+  exits: [
+    // Porta norte → arena do chefe (fade + diálogo de abertura).
+    { tx: 6, ty: 0, w: 3, h: 2, to: "boss", spawn: "enter", transition: "fade", enterDialog: "boss_intro" },
+    // Porta sul → volta à floresta, junto ao portão.
+    { tx: 6, ty: 8, w: 3, h: 2, to: "forest", spawn: "fromRuin", transition: "fade" },
+  ],
+  objects: [
+    { type: "sign", tx: 7, ty: 5, name: "Inscrição gasta", dialog: "ruin_sign" },
+    { type: "deco", kind: "tocha", tx: 2, ty: 2, anim: true, solid: false },
+    { type: "deco", kind: "tocha", tx: 12, ty: 2, anim: true, solid: false },
+  ],
+  enemies: [],
+  music: "ruin_theme",
+  onEnter(game) {
+    if (game && game.flags && !game.flags.entered_ruin) game.playDialog("ruin_enter");
+  },
+};
+
+globalThis.MAP_RUIN_ENTRY = MAP_RUIN_ENTRY;
+
+;
+/* === data/dialogs_f1.js === */
+// dialogs_f1.js — F1-Content (Prólogo + Cap. 1)
+// Roteiro fiel a 01_STORY_BIBLE.md §Prólogo e §Cap. 1.
+// Tom: aventura GBA clássica, humor leve da Lumi, pt-BR.
+// Regra de caixa: cada texto <= 180 chars (<= 4 linhas de ~45 chars).
+//
+// Formato de cada entrada:
+//   { id, speakers: [[nome, texto], ...], flagsSet: {...}, choices?: [...] }
+//   choices: [{ text, reply: [[nome, texto], ...], flagsSet }] — reply é
+//   opcional; flagsSet da escolha soma com o flagsSet da entrada.
+// Convenção de NPC: dialogs: { first, repeat } — o motor toca `repeat`
+// quando as flags de `first` já foram aplicadas.
+//
+// Propostas D-0X: nenhuma. Nenhuma mudança de lore nesta frente.
+
+const DIALOGS_F1 = {
+  wake_up: {
+    id: "wake_up",
+    speakers: [
+      ["Mãe", "Levanta! Você vai perder o festival!"],
+      ["Kael", "Só mais cinco minutinhos..."],
+      ["Mãe", "O festival é hoje! E ajeite o pingente do seu pai antes de sair."],
+    ],
+    flagsSet: { woke_up: 1 },
+  },
+
+  mother_repeat: {
+    id: "mother_repeat",
+    speakers: [
+      ["Mãe", "Vai logo ao festival! E não se meta em encrenca, ouviu?"],
+    ],
+    flagsSet: {},
+  },
+
+  festival_square: {
+    id: "festival_square",
+    speakers: [
+      ["Narrador", "A praça de Brisamar está cheia. Música, barracas e cheiro de pão doce."],
+      ["Morador", "Dizem que hoje uma estrela vai cair! Não esqueça de fazer um pedido!"],
+      ["Kael", "Um pedido... Quero conhecer o mundo além da vila."],
+    ],
+    flagsSet: { festival_seen: 1 },
+  },
+
+  darius_farewell: {
+    id: "darius_farewell",
+    speakers: [
+      ["Darius", "Vou para a capital. Lá eles sabem reconhecer talento de verdade."],
+      ["Kael", "Espera! Vamos juntos? Uma estrela caiu na floresta..."],
+      ["Darius", "Não precisa vir atrás de mim. Quando eu voltar, já vou ter resolvido tudo."],
+    ],
+    flagsSet: { darius_left: 1 },
+    choices: [
+      {
+        text: "Boa sorte, Darius!",
+        reply: [["Darius", "Hmph. Não preciso de sorte. Mas... obrigado."]],
+        flagsSet: {},
+      },
+      {
+        text: "Vou provar que está errado!",
+        reply: [["Darius", "Ha! Quero ver. Tente acompanhar, Kael."]],
+        flagsSet: { kael_defiant: 1 },
+      },
+    ],
+  },
+
+  darius_repeat: {
+    id: "darius_repeat",
+    speakers: [
+      ["Darius", "A capital me espera. Nos vemos quando eu for famoso, Kael."],
+    ],
+    flagsSet: {},
+  },
+
+  orin_meet: {
+    id: "orin_meet",
+    speakers: [
+      ["Orin", "Pesca exige paciência. Coisa que jovem nenhum tem."],
+      ["Kael", "Mestre Orin! Me ensina a usar espada? A floresta está perigosa!"],
+      ["Orin", "Esse símbolo no seu pingente... Onde conseguiu isso?"],
+      ["Kael", "Era do meu pai. Ele sumiu nas ruínas do norte."],
+      ["Orin", "Se vai sair por aí tentando salvar o mundo, pelo menos aprenda a não cortar o próprio pé."],
+    ],
+    flagsSet: { met_orin: 1, got_sword: 1 },
+  },
+
+  orin_tutorial: {
+    id: "orin_tutorial",
+    speakers: [
+      ["Orin", "Pegue esta espada velha. Acerte com A. Sem medo, garoto."],
+      ["Kael", "Acertei! Até que é leve..."],
+      ["Orin", "Bom. Quando eu gritar JÁ, esquive com B. Lâmina se desvia, não se abraça."],
+    ],
+    flagsSet: { tutorial_done: 1 },
+  },
+
+  orin_repeat: {
+    id: "orin_repeat",
+    speakers: [
+      ["Orin", "Espada afiada e pé inteiro. Lembre do que ensinei e volte vivo."],
+    ],
+    flagsSet: {},
+  },
+
+  starfall: {
+    id: "starfall",
+    speakers: [
+      ["Narrador", "O céu escurece. As estrelas somem, uma a uma."],
+      ["Narrador", "Uma luz vermelha risca o horizonte. A terra treme."],
+      ["Narrador", "Uma estrela cai atrás da Floresta dos Sussurros."],
+    ],
+    flagsSet: { star_seen: 1 },
+  },
+
+  lumi_meet: {
+    id: "lumi_meet",
+    speakers: [
+      ["Narrador", "Entre as raízes, uma pedra azul pulsa. O pingente de Kael brilha em resposta."],
+      ["Kael", "Que luz é essa? Tem algo falando dentro da minha cabeça?"],
+      ["Lumi", "Finalmente... alguém que ainda consegue ouvir."],
+      ["Lumi", "Sou Lumi. Você deve ser o herói. Tem cara de quem se perde no quintal."],
+      ["Kael", "Eu não sou herói! E você é... uma raposa que brilha?"],
+      ["Lumi", "Fada-raposa, obrigada. Anotado e ignorado. Vamos, herói."],
+    ],
+    flagsSet: { met_lumi: 1 },
+  },
+
+  // Compatível com o MVP (cristal-cap1.html :: read()).
+  forest_sign: {
+    id: "forest_sign",
+    speakers: [
+      ["Inscrição", "Primeiro o céu, depois a folha, por fim o sangue da terra."],
+      ["Lumi", "Céu, folha, sangue... azul, verde, vermelho? Procure runas por aí!"],
+    ],
+    flagsSet: { sign_read: 1 },
+  },
+
+  // Compatível com o MVP (cristal-cap1.html :: toBoss()).
+  boss_intro: {
+    id: "boss_intro",
+    speakers: [
+      ["Lumi", "Cuidado, Kael! Essa coisa está viva! Esquive com B e use a minha magia com C!"],
+    ],
+    flagsSet: { boss_started: 1 },
+  },
+
+  // Compatível com o MVP (diálogo de vitória) + gancho da Bíblia (encapuzado).
+  boss_defeated: {
+    id: "boss_defeated",
+    speakers: [
+      ["Narrador", "O Guardião das Raízes desmorona. Entre as raízes surge uma inscrição antiga."],
+      ["Inscrição", "Quando a primeira estrela cair, aquele que carrega a lembrança abrirá o caminho."],
+      ["Lumi", "Kael... esse símbolo é idêntico ao do seu pingente."],
+      ["Kael", "Do meu pai...? Então ele sabia de tudo isso."],
+      ["Narrador", "Do alto de uma colina, uma figura encapuzada observa a ruína... e desaparece quando Kael se vira."],
+    ],
+    flagsSet: { boss1_defeated: 1 },
+  },
+
+  ruin_enter: {
+    id: "ruin_enter",
+    speakers: [
+      ["Lumi", "Sente isso? O ar aqui pesa. Fique perto de mim, herói."],
+      ["Kael", "Desde quando você se preocupa comigo?"],
+      ["Lumi", "Desde que você virou meu único meio de transporte."],
+    ],
+    flagsSet: { entered_ruin: 1 },
+  },
+
+  ruin_sign: {
+    id: "ruin_sign",
+    speakers: [
+      ["Inscrição", "Só o corajoso desce. O Guardião espera em silêncio."],
+      ["Lumi", "Corajoso ou teimoso. No seu caso, dá no mesmo."],
+    ],
+    flagsSet: {},
+  },
+
+  village_sign: {
+    id: "village_sign",
+    speakers: [
+      ["Placa", "Brisamar — Festival das Estrelas hoje! Saída da floresta a leste."],
+    ],
+    flagsSet: {},
+  },
+
+  key_bush_found: {
+    id: "key_bush_found",
+    speakers: [
+      ["Narrador", "Num arbusto denso, algo metálico brilha entre as folhas."],
+      ["Lumi", "Uma chave! Viu? Bisbilhotar arbustos dá resultado. Sou um gênio."],
+    ],
+    flagsSet: { has_key_c1: 1 },
+  },
+};
+
+// Registro global para o build de arquivo único (concat de src/).
+// Não usar `module.exports` aqui: o entregável final é 1 HTML sem bundler.
+globalThis.DIALOGS_F1 = DIALOGS_F1;
+
+;
+/* === main.js === */
+// src/main.js — F0 Integração: Cap.1 idêntico ao MVP sobre o motor novo.
+// D-12: main é o único lugar que toca DOM/canvas/loop. Módulos core/systems/maps/data
+// são puros e seguros em node. Aqui fazemos a ponte com graceful fallback:
+// se um módulo não carregou (ordem de concat quebrada), o jogo segue com o MVP.
+// Aceite F0 = Cap.1 idêntico ao MVP (ver 04_DEV_PLAN.md D-13). Nenhuma trava nova (sem soft-lock).
+(function jogoPrincipal() {
+'use strict';
+if (typeof document === 'undefined' || typeof window === 'undefined') return; // node/smoke: só syntax-check
+var cv = document.getElementById('c');
+if (!cv) return;
+var x = cv.getContext('2d');
+var W = 240, H = 160, T = 16;
+var DX = [0, 0, -1, 1], DY = [1, -1, 0, 0];
+var OBJ = ['Explore a floresta', 'Ative as runas na ordem certa', 'Pegue a chave', 'Abra o portão das ruínas', 'Derrote o Guardião das Raízes'];
+
+// ---- atalhos p/ módulos (com fallback) ----
+var Dlg = (typeof globalThis !== 'undefined' && globalThis.Cristal && globalThis.Cristal.Dialogue) || null;
+var Ent = (typeof globalThis !== 'undefined' && globalThis.Cristal && globalThis.Cristal.Entities) || null;
+var Aud = (typeof globalThis !== 'undefined' && globalThis.Cristal && globalThis.Cristal.Audio) || null;
+var UI = (typeof globalThis !== 'undefined' && globalThis.Cristal && globalThis.Cristal.UI) || null;
+var G = (typeof Game !== 'undefined') ? Game : null;
+var Wd = (typeof World !== 'undefined') ? World : null;
+var Sv = (typeof SaveSystem !== 'undefined') ? SaveSystem : null;
+var DIALOGS = (typeof DIALOGS_F1 !== 'undefined') ? DIALOGS_F1 : ((typeof globalThis !== 'undefined' && globalThis.DIALOGS_F1) || null);
+
+var AC = null, seed = 7, st = 'title', P = null, E = [], S = [], RT = [], items = [], B = null;
+var M = null, MW = 0, MH = 0, CX = 0, CY = 0, runes = [], obj = 0, mt = '', tt = 0, fr = 0;
+var inBoss = false, swing = 0, gcd = 0, menuIdx = 0, menuOpen = false;
+var sign = { x: 4 * T, y: 14 * T };
+var K = { u: 0, d: 0, l: 0, r: 0 };
+// expõe ponte p/ World._applyToMvp (ele lê M/MW/MH/P/inBoss via typeof em escopo global;
+// como estamos em IIFE, espelhamos nas globals para a ponte funcionar)
+function espelharGlobals() {
+  try { window.M = M; } catch (e) {}
+  try { window.MW = MW; } catch (e) {}
+  try { window.MH = MH; } catch (e) {}
+  try { window.P = P; } catch (e) {}
+  try { window.inBoss = inBoss; } catch (e) {}
+  try { globalThis.M = M; globalThis.MW = MW; globalThis.MH = MH; globalThis.P = P; globalThis.inBoss = inBoss; } catch (e) {}
+}
+
+function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+function playSnd(f, d, t) {
+  if (Aud && typeof Aud.snd === 'function') { try { Aud.snd(f, d, t); return; } catch (e) {} }
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    var o = AC.createOscillator(), g = AC.createGain();
+    o.type = t || 'square'; o.frequency.value = f; g.gain.value = 0.05;
+    o.connect(g); g.connect(AC.destination); o.start();
+    g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime + (d || 0.08));
+    o.stop(AC.currentTime + (d || 0.08));
+  } catch (e) {}
+}
+function showMsg(t) {
+  if (UI && typeof UI.mostrarToast === 'function') { try { UI.mostrarToast(t); } catch (e) {} }
+  mt = t; tt = 150;
+}
+// Diálogo: usa Cristal.Dialogue (typewriter no passo fixo) ou fallback local.
+var fallbackQ = [], fallbackQL = 0, fallbackTC = 0, fallbackDone = null, fallbackPrev = 'play';
+function say(lines, cb) {
+  if (Dlg && typeof Dlg.startDialogue === 'function') {
+    try {
+      var norm = lines.map(function (l) {
+        if (Array.isArray(l)) return { name: l[0], text: l[1] };
+        return l;
+      });
+      Dlg.startDialogue(norm, cb || null);
+      st = 'talk';
+      return;
+    } catch (e) {}
+  }
+  fallbackQ = lines; fallbackQL = 0; fallbackTC = 0; fallbackDone = cb || null; fallbackPrev = st; st = 'talk';
+}
+function advanceTalk() {
+  if (Dlg && typeof Dlg.isDialogueActive === 'function') {
+    try { if (Dlg.isDialogueActive()) { Dlg.advanceDialogue(); if (!Dlg.isDialogueActive()) { var cb = null; st = 'play'; } return; } } catch (e) {}
+  }
+  if (fallbackTC / 2 < (fallbackQ[fallbackQL] ? fallbackQ[fallbackQL][1].length : 0)) { fallbackTC = 999; return; }
+  fallbackQL++; fallbackTC = 0;
+  if (fallbackQL >= fallbackQ.length) { st = fallbackPrev; var f = fallbackDone; fallbackDone = null; if (f) f(); }
+}
+function playDialogId(id, cb) {
+  if (DIALOGS && DIALOGS[id]) {
+    var d = DIALOGS[id];
+    say(d.speakers, function () {
+      try {
+        if (G && d.flagsSet) {
+          for (var k in d.flagsSet) {
+            if (k === 'has_key_c1' || k === 'sign_read' || k === 'boss1_defeated') G.setFlag(k, true);
+            else { if (!G.flags) G.resetFlags(); G.flags[k] = d.flagsSet[k]; }
+          }
+          syncObjFromFlags();
+        }
+      } catch (e) {}
+      if (cb) cb();
+    });
+    return true;
+  }
+  return false;
+}
+function syncObjFromFlags() {
+  try {
+    if (G && typeof G.indiceObjetivoCap1 === 'function') obj = G.indiceObjetivoCap1();
+  } catch (e) {}
+}
+
+function solidAt(px, py) {
+  var i = Math.floor(px / T), j = Math.floor(py / T);
+  if (i < 0 || j < 0 || i >= MW || j >= MH) return 1;
+  var c = M[j][i];
+  if (typeof isSolidTile === 'function') { try { return isSolidTile(c) ? 1 : 0; } catch (e) {} }
+  return (c === '#' || c === 'G') ? 1 : 0;
+}
+function blk(e, nx, ny) {
+  var s = e.s;
+  var corners = [[0, 0], [s, 0], [0, s], [s, s]];
+  for (var k = 0; k < 4; k++) if (solidAt(nx + corners[k][0], ny + corners[k][1])) return 1;
+  if (!inBoss) {
+    var obstacles = [sign].concat(runes);
+    for (var o = 0; o < obstacles.length; o++) {
+      var ob = obstacles[o];
+      if (nx < ob.x + T && nx + s > ob.x && ny < ob.y + T && ny + s > ob.y) return 1;
+    }
+  }
+  return 0;
+}
+function mv(e, dx, dy) { if (!blk(e, e.x + dx, e.y)) e.x += dx; if (!blk(e, e.x, e.y + dy)) e.y += dy; }
+
+function forest() {
+  inBoss = false; MW = 30; MH = 20; seed = 7; M = [];
+  for (var j = 0; j < MH; j++) { M[j] = []; for (var i = 0; i < MW; i++) M[j][i] = (i < 1 || j < 1 || i > MW - 2 || j > MH - 2 || rnd() < 0.2) ? '#' : '.'; }
+  var cl = function (a, b, c, d) { for (var jj = b; jj <= d; jj++) for (var ii = a; ii <= c; ii++) M[jj][ii] = '.'; };
+  var ln = function (a, b, c, d) { cl(Math.min(a, c), b, Math.max(a, c), b + 1); cl(c, Math.min(b, d), c + 1, Math.max(b, d) + 1); };
+  cl(1, 13, 7, 18); ln(2, 16, 10, 10); ln(10, 10, 14, 6); ln(14, 6, 20, 12); ln(20, 12, 27, 4);
+  M[3][27] = 'G'; M[3][26] = '#'; M[3][28] = '#'; M[2][27] = '#';
+  runes = [
+    { x: 10 * T, y: 10 * T, c: '#4a8cff', i: 0, on: 0 },
+    { x: 14 * T, y: 6 * T, c: '#4ccf4c', i: 1, on: 0 },
+    { x: 20 * T, y: 12 * T, c: '#ee4444', i: 2, on: 0 }
+  ];
+  E = [];
+  for (var n = 0; n < 500 && E.length < 7; n++) {
+    var si = 6 + Math.floor(rnd() * 22), sj = 2 + Math.floor(rnd() * 16);
+    var e = { x: si * T + 3, y: sj * T + 3, s: 10, hp: 2, t: 0, vx: 0, vy: 0, kx: 0, ky: 0, fl: 0 };
+    if (M[sj][si] === '.' && !blk(e, e.x, e.y) && Math.hypot(e.x - P.x, e.y - P.y) > 90) E.push(e);
+  }
+  espelharGlobals();
+}
+function arena() {
+  inBoss = true; MW = 15; MH = 10; M = [];
+  for (var j = 0; j < MH; j++) { M[j] = []; for (var i = 0; i < MW; i++) M[j][i] = (i < 1 || j < 1 || i > MW - 2 || j > MH - 2) ? '#' : '.'; }
+  E = []; items = []; runes = []; S = []; RT = [];
+  P.x = 7 * T; P.y = 8 * T; P.hp = 8; P.inv = 60;
+  B = { x: 106, y: 28, s: 28, hp: 24, m: 'walk', t: 90, fl: 0, dc: 0, end: 0, sw: -1 };
+  espelharGlobals();
+}
+function toBoss() {
+  arena(); obj = 4;
+  try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena'); } catch (e) {}
+  if (!playDialogId('boss_intro')) say([['Lumi', 'Cuidado, Kael! Essa coisa está viva! Esquive com B e use a minha magia com C!']]);
+}
+function begin() {
+  try { if (G && typeof G.resetFlags === 'function') G.resetFlags(); } catch (e) {}
+  obj = 0; items = []; S = []; RT = []; swing = 0; B = null;
+  P = { x: 3 * T, y: 16 * T, s: 10, d: 1, hp: 8, inv: 0, at: 0, dash: 0, cd: 0, kx: 0, ky: 0 };
+  forest(); st = 'play';
+  try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('forest'); } catch (e) {}
+  say([
+    ['Narrador', 'Uma estrela caiu atrás da floresta. O pingente de Kael brilha, e algo chama seu nome.'],
+    ['Kael', 'Lumi, essas raízes negras estão por toda parte...'],
+    ['Lumi', 'Não deviam estar tão perto da vila. Vamos investigar, herói.'],
+    ['Kael', 'Eu não sou herói.'],
+    ['Lumi', 'Anotado e ignorado. Dica: A ataca com a espada, B esquiva, C dispara minha magia.']
+  ]);
+}
+function retry() {
+  P.hp = 8; P.inv = 60; P.kx = P.ky = 0;
+  if (inBoss) arena(); else { P.x = 3 * T; P.y = 16 * T; }
+  st = 'play';
+}
+function read() {
+  if (obj < 1) obj = 1;
+  try { if (G && typeof G.setFlag === 'function') { G.setFlag('sign_read', true); syncObjFromFlags(); } } catch (e) {}
+  if (!playDialogId('forest_sign')) say([['Inscrição', 'Primeiro o céu, depois a folha, por fim o sangue da terra.'], ['Lumi', 'Céu, folha, sangue... azul, verde, vermelho? Procure runas por aí!']]);
+}
+function attack() {
+  if (P.at > 0) return;
+  if (!inBoss && Math.hypot(P.x + 5 - sign.x - 8, P.y + 5 - sign.y - 8) < 22) { read(); return; }
+  P.at = 14; swing++; playSnd(300, 0.06);
+}
+function dash() {
+  if (P.dash > 0 || P.at > 0) return;
+  P.dash = 9; P.inv = Math.max(P.inv, 12); playSnd(500, 0.05, 'triangle');
+}
+function shoot() {
+  if (P.cd > 0) return;
+  P.cd = 30;
+  S.push({ x: P.x + 5, y: P.y + 5, vx: DX[P.d] * 2.6, vy: DY[P.d] * 2.6, l: 70 });
+  playSnd(900, 0.07);
+}
+function stepOf() { try { if (G && G.flags) return G.flags.step | 0; } catch (e) {} return fallbackStep(); }
+function fallbackStep() { var n = 0; for (var i = 0; i < runes.length; i++) if (runes[i].on) n++; return n; }
+function hasKey() { try { if (G && G.flags) return G.flags.has_key_c1 === true; } catch (e) {} return fallbackHasKey(); }
+function fallbackHasKey() { return obj >= 3; }
+function setStep(n) { try { if (G && typeof G.setFlag === 'function' && n >= 0 && n <= 3) { G.setFlag('step', n); if (n >= 3) G.setFlag('runes_done', true); syncObjFromFlags(); return; } } catch (e) {} }
+function setKey() {
+  try {
+    if (G && typeof G.setFlag === 'function') { G.setFlag('has_key_c1', true); syncObjFromFlags(); }
+    else if (obj < 3) obj = 3;
+  } catch (e) { if (obj < 3) obj = 3; }
+  try { if (Sv && typeof Sv.saveOnKeyItem === 'function') Sv.saveOnKeyItem('chave-c1'); } catch (e) {}
+}
+function act(a) {
+  if (Aud && typeof Aud.desbloquearAudio === 'function') { try { Aud.desbloquearAudio(); } catch (e) {} }
+  if (menuOpen) {
+    if (a === 'a') {
+      if (menuIdx === 0) { menuOpen = false; if (UI) { try { UI.continuarJogo(); } catch (e) {} } }
+      else if (menuIdx === 1) { if (Aud) { try { Aud.alternarMudo(); } catch (e) {} } }
+      else { retry(); menuOpen = false; if (UI) { try { UI.continuarJogo(); } catch (e) {} } }
+    }
+    return;
+  }
+  if (st === 'title') {
+    if (a === 'c' && Sv && typeof Sv.hasSave === 'function') {
+      try {
+        if (Sv.hasSave()) {
+          begin();
+          if (Sv.loadGame()) { syncObjFromFlags(); st = 'play'; showMsg('Progresso restaurado.'); return; }
+        }
+      } catch (e) {}
+    }
+    begin(); return;
+  }
+  if (st === 'end') { begin(); return; }
+  if (st === 'talk') { advanceTalk(); if (Aud) { try { Aud.tocarEfeito('avancoDialogo'); } catch (e) {} } return; }
+  if (st === 'over') { retry(); return; }
+  if (st !== 'play') return;
+  if (a === 'a') attack();
+  if (a === 'b') dash();
+  if (a === 'c') shoot();
+}
+function hurtP(sx, sy) {
+  if (P.inv > 0 || P.dash > 0 || st !== 'play') return;
+  P.hp--; P.inv = 60;
+  var dx = P.x - sx, dy = P.y - sy, d = Math.hypot(dx, dy) || 1;
+  P.kx = dx / d * 3; P.ky = dy / d * 3;
+  playSnd(110, 0.2, 'sawtooth');
+  if (P.hp <= 0) st = 'over';
+}
+function hurtE(e, n) {
+  e.hp -= n; e.fl = 8;
+  var dx = e.x - P.x, dy = e.y - P.y, d = Math.hypot(dx, dy) || 1;
+  e.kx = dx / d * 3; e.ky = dy / d * 3;
+  playSnd(220, 0.08);
+  if (e.hp <= 0 && Math.random() < 0.3) items.push({ x: e.x, y: e.y, t: 'h' });
+}
+function hitRune(r) {
+  if (r.on) return;
+  if (r.i === stepOf()) {
+    setStep(stepOf() + 1); r.on = 1; playSnd(700 + stepOf() * 150, 0.2, 'triangle'); showMsg('Runa ativada!');
+    if (stepOf() === 3) {
+      if (obj < 2) obj = 2; syncObjFromFlags();
+      items.push({ x: 23 * T + 3, y: 12 * T + 3, t: 'k' });
+      showMsg('Uma chave surgiu no chão!');
+    }
+  } else {
+    setStep(0);
+    runes.forEach(function (o) { o.on = 0; });
+    playSnd(110, 0.3, 'sawtooth'); showMsg('As runas se apagaram...');
+  }
+}
+function hitBoss(n) { if (B.fl > 0 || B.hp <= 0) return; B.hp -= n; B.fl = 10; playSnd(200, 0.1); }
+function ov(a, b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+function update() {
+  if (P.inv > 0) P.inv--;
+  if (P.at > 0) P.at--;
+  if (P.dash > 0) P.dash--;
+  if (P.cd > 0) P.cd--;
+  if (tt > 0) tt--;
+  if (gcd > 0) gcd--;
+  if (Dlg && typeof Dlg.updateDialogue === 'function') { try { Dlg.updateDialogue(); } catch (e) {} }
+  else if (st === 'talk') { fallbackTC++; }
+  if (UI && typeof UI.updateToast === 'function') { try { UI.updateToast(st === 'talk'); } catch (e) {} }
+  if (Wd && typeof Wd.updateWorldTransition === 'function') { try { Wd.updateWorldTransition(); } catch (e) {} }
+  var dx = K.r - K.l, dy = K.d - K.u;
+  if (dx || dy) {
+    var n = Math.hypot(dx, dy); dx /= n; dy /= n;
+    if (P.dash <= 0) {
+      if (Math.abs(dx) > Math.abs(dy)) P.d = dx > 0 ? 3 : 2;
+      else P.d = dy > 0 ? 0 : 1;
+    }
+  }
+  if (P.dash > 0) { dx = DX[P.d]; dy = DY[P.d]; }
+  var sp = P.dash > 0 ? 2.6 : (P.at > 0 ? 0.5 : 1.1);
+  mv(P, dx * sp, dy * sp);
+  if (P.kx || P.ky) { mv(P, P.kx, P.ky); P.kx *= 0.8; P.ky *= 0.8; }
+  if (P.at >= 4 && P.at <= 10) {
+    var hb = { x: P.x + 5 + DX[P.d] * 11 - 7, y: P.y + 5 + DY[P.d] * 11 - 7, w: 14, h: 14 };
+    for (var ei = 0; ei < E.length; ei++) {
+      var en = E[ei];
+      if (en.sw !== swing && ov(hb, { x: en.x, y: en.y, w: 10, h: 10 })) { en.sw = swing; hurtE(en, 2); }
+    }
+    for (var ri = 0; ri < runes.length; ri++) {
+      var rr = runes[ri];
+      if (rr.sw !== swing && ov(hb, { x: rr.x, y: rr.y, w: T, h: T })) { rr.sw = swing; hitRune(rr); }
+    }
+    if (B && B.hp > 0 && B.sw !== swing && ov(hb, { x: B.x, y: B.y, w: 28, h: 28 })) { B.sw = swing; hitBoss(2); }
+  }
+  for (var si = 0; si < S.length; si++) {
+    var s = S[si];
+    s.x += s.vx; s.y += s.vy; s.l--;
+    if (solidAt(s.x, s.y)) s.l = 0;
+    for (var q = 0; q < runes.length; q++) {
+      var rq = runes[q];
+      if (s.l > 0 && Math.abs(s.x - rq.x - 8) < 8 && Math.abs(s.y - rq.y - 8) < 8) { s.l = 0; hitRune(rq); }
+    }
+    for (var q2 = 0; q2 < E.length; q2++) {
+      var e2 = E[q2];
+      if (s.l > 0 && e2.hp > 0 && Math.hypot(s.x - e2.x - 5, s.y - e2.y - 5) < 9) { s.l = 0; hurtE(e2, 1); }
+    }
+    if (B && B.hp > 0 && s.l > 0 && s.x > B.x && s.x < B.x + 28 && s.y > B.y && s.y < B.y + 28) { s.l = 0; hitBoss(1); }
+  }
+  S = S.filter(function (s) { return s.l > 0; });
+  for (var i = 0; i < E.length; i++) {
+    var e = E[i];
+    if (e.fl > 0) e.fl--;
+    var ex = P.x - e.x, ey = P.y - e.y, d = Math.hypot(ex, ey) || 1;
+    var vx, vy;
+    if (d < 70) { vx = ex / d * 0.5; vy = ey / d * 0.5; }
+    else {
+      if (--e.t <= 0) { e.t = 50 + Math.random() * 60; e.vx = (Math.random() - 0.5) * 0.7; e.vy = (Math.random() - 0.5) * 0.7; }
+      vx = e.vx; vy = e.vy;
+    }
+    mv(e, vx, vy);
+    if (e.kx || e.ky) { mv(e, e.kx, e.ky); e.kx *= 0.8; e.ky *= 0.8; }
+    if (d < 10) hurtP(e.x, e.y);
+  }
+  E = E.filter(function (e) { return e.hp > 0; });
+  for (var it = 0; it < items.length; it++) {
+    var item = items[it];
+    if (!item.g && Math.hypot(P.x - item.x, P.y - item.y) < 11) {
+      item.g = 1;
+      if (item.t === 'k') { setKey(); showMsg('Chave obtida! Vá ao portão.'); playSnd(1000, 0.3, 'triangle'); }
+      else { P.hp = Math.min(8, P.hp + 2); playSnd(800, 0.1); }
+    }
+  }
+  items = items.filter(function (i) { return !i.g; });
+  if (!inBoss && Math.hypot(P.x + 5 - 27 * T - 8, P.y + 5 - 3 * T - 8) < 20) {
+    if (hasKey()) toBoss();
+    else if (gcd <= 0) { showMsg('Trancado. Falta uma chave.'); gcd = 120; }
+  }
+  if (B) {
+    if (B.fl > 0) B.fl--;
+    if (B.hp <= 0) {
+      if (++B.dc > 70 && !B.end) {
+        B.end = 1; RT = [];
+        try { if (G && typeof G.setFlag === 'function') { G.setFlag('boss1_defeated', true); syncObjFromFlags(); } } catch (e) {}
+        try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena'); } catch (e) {}
+        if (!playDialogId('boss_defeated', function () { st = 'end'; })) {
+          say([
+            ['Narrador', 'O Guardião das Raízes desmorona. Entre as raízes surge uma inscrição antiga.'],
+            ['Inscrição', 'Quando a primeira estrela cair, aquele que carrega a lembrança abrirá o caminho.'],
+            ['Lumi', 'Kael... esse símbolo é idêntico ao do seu pingente.'],
+            ['Kael', 'Do meu pai...? Então ele sabia de tudo isso.'],
+            ['Narrador', 'Do alto de uma colina, uma figura encapuzada observa a ruína... e desaparece quando Kael se vira.']
+          ], function () { st = 'end'; });
+        }
+      }
+    } else {
+      var bx = B.x + 14, by = B.y + 14;
+      var pdx = P.x + 5 - bx, pdy = P.y + 5 - by, pd = Math.hypot(pdx, pdy) || 1;
+      B.t--;
+      if (B.m === 'walk') { B.x += pdx / pd * 0.4; B.y += pdy / pd * 0.4; if (B.t <= 0) { B.m = 'tel'; B.t = 40; } }
+      else if (B.m === 'tel') {
+        if (B.t <= 0) {
+          B.m = 'slam'; B.t = 14; playSnd(80, 0.4, 'sawtooth');
+          if (B.hp <= 12) for (var a = 0; a < 8; a++) RT.push({ x: bx, y: by, vx: Math.cos(a * Math.PI / 4) * 1.3, vy: Math.sin(a * Math.PI / 4) * 1.3, l: 140 });
+        }
+      }
+      else if (B.m === 'slam') { if (pd < 46) hurtP(bx, by); if (B.t <= 0) { B.m = 'rest'; B.t = 50; } }
+      else if (B.t <= 0) { B.m = 'walk'; B.t = (B.hp <= 12 ? 65 : 90) + Math.random() * 30; }
+      B.x = Math.max(T, Math.min(MW * T - T - 28, B.x));
+      B.y = Math.max(T, Math.min(MH * T - T - 28, B.y));
+      if (pd < 22 && B.m !== 'slam') hurtP(bx, by);
+    }
+  }
+  for (var rti = 0; rti < RT.length; rti++) {
+    var rt = RT[rti];
+    rt.x += rt.vx; rt.y += rt.vy; rt.l--;
+    if (solidAt(rt.x, rt.y)) rt.l = 0;
+    if (Math.hypot(P.x + 5 - rt.x, P.y + 5 - rt.y) < 8) { rt.l = 0; hurtP(rt.x, rt.y); }
+  }
+  RT = RT.filter(function (r) { return r.l > 0; });
+  CX = Math.max(0, Math.min(MW * T - W, P.x + 5 - W / 2));
+  CY = Math.max(0, Math.min(MH * T - H, P.y + 5 - H / 2));
+  espelharGlobals();
+}
+
+function R(c, a, b, w, h) { x.fillStyle = c; x.fillRect(Math.round(a - CX), Math.round(b - CY), w, h); }
+function F(c, a, b, w, h) { x.fillStyle = c; x.fillRect(a, b, w, h); }
+function wrap(t, w) {
+  var o = [], l = '';
+  var parts = t.split(' ');
+  for (var i = 0; i < parts.length; i++) {
+    var s = parts[i];
+    if (x.measureText(l + s).width > w) { o.push(l); l = s + ' '; }
+    else l += s + ' ';
+  }
+  o.push(l); return o;
+}
+function txt(t, a, b, c, al) {
+  x.textAlign = al || 'left';
+  x.fillStyle = '#000'; x.fillText(t, a + 1, b + 1);
+  x.fillStyle = c || '#fff'; x.fillText(t, a, b);
+}
+function linhaDialogoVisivel() {
+  if (Dlg && typeof Dlg.obterLinhaAtual === 'function') {
+    try {
+      var linha = Dlg.obterLinhaAtual();
+      if (!linha) return null;
+      var vis = (typeof Dlg.obterTextoVisivel === 'function') ? Dlg.obterTextoVisivel() : linha.texto;
+      return [linha.nome || '???', vis, (Dlg.linhaAtualCompleta ? Dlg.linhaAtualCompleta() : true)];
+    } catch (e) { return null; }
+  }
+  if (!fallbackQ.length) return null;
+  var l = fallbackQ[fallbackQL];
+  if (!l) return null;
+  return [l[0], l[1].slice(0, Math.floor(fallbackTC / 2)), fallbackTC / 2 >= l[1].length];
+}
+
+function render() {
+  x.font = 'bold 8px monospace'; x.textBaseline = 'alphabetic';
+  F('#000', 0, 0, W, H);
+  if (st === 'title') {
+    for (var i = 0; i < 40; i++) F('#fff', (i * 53) % W, (i * 37) % H, 1, 1);
+    txt('A LENDA DO CRISTAL', W / 2, 44, '#ffd866', 'center');
+    txt('DO AMANHECER', W / 2, 56, '#ffd866', 'center');
+    txt('Capítulo 1: A Floresta dos Sussurros', W / 2, 78, '#9cf', 'center');
+    var hasSave = false;
+    try { hasSave = Sv && typeof Sv.hasSave === 'function' && Sv.hasSave(); } catch (e) {}
+    if (fr % 60 < 40) {
+      txt('A: Novo jogo', W / 2, 116, '#fff', 'center');
+      if (hasSave) txt('C: Continuar', W / 2, 128, '#7f7', 'center');
+      else txt('Toque para começar', W / 2, 128, '#fff', 'center');
+    }
+    var muted = false;
+    try { muted = Aud && typeof Aud.isMuted === 'function' && Aud.isMuted(); } catch (e) {}
+    txt(muted ? 'M: som off' : 'M: som on', W / 2, 144, '#888', 'center');
+    return;
+  }
+  if (!P) return;
+  var j, i;
+  for (j = Math.max(0, Math.floor(CY / T)); j < Math.min(MH, Math.ceil((CY + H) / T) + 1); j++) {
+    for (i = Math.max(0, Math.floor(CX / T)); i < Math.min(MW, Math.ceil((CX + W) / T) + 1); i++) {
+      var c = M[j][i], a = i * T, b = j * T;
+      R(inBoss ? '#5a5a6a' : '#3d8b37', a, b, T, T);
+      if (c === '.') {
+        if ((i * 7 + j * 13) % 5 === 0) R(inBoss ? '#666677' : '#4aa043', a + 4, b + 5, 2, 2);
+        if (!inBoss && (i * 31 + j * 17) % 19 === 0) R('#2a1a30', a + 3, b + 4, 6, 4);
+      } else if (c === '#') {
+        if (inBoss) { R('#33334a', a, b, T, T); R('#444460', a + 1, b + 1, 14, 6); }
+        else { R('#1c5a2a', a, b, T, 13); R('#2f7d3a', a + 2, b + 1, 12, 8); R('#5a3a1e', a + 6, b + 12, 4, 4); }
+      } else if (c === 'G') { R('#666', a, b, T, T); R(hasKey() ? '#352' : '#222', a + 3, b + 3, 10, 13); R(hasKey() ? '#7f7' : '#fc4', a + 10, b + 9, 2, 2); }
+    }
+  }
+  for (var ii = 0; ii < items.length; ii++) {
+    var it = items[ii];
+    if (it.t === 'k') { R('#fc4', it.x, it.y + 2, 8, 3); R('#fc4', it.x, it.y, 4, 7); }
+    else { R('#f44', it.x, it.y, 3, 3); R('#f44', it.x + 4, it.y, 3, 3); R('#f44', it.x, it.y + 2, 7, 4); }
+  }
+  if (!inBoss) {
+    R('#8a5a2a', sign.x + 3, sign.y + 3, 10, 7); R('#5a3a1e', sign.x + 7, sign.y + 10, 2, 6);
+    for (var ri = 0; ri < runes.length; ri++) {
+      var rn = runes[ri];
+      R('#666', rn.x + 2, rn.y + 3, 12, 13); R(rn.on ? rn.c : '#333', rn.x + 4, rn.y + 5, 8, 8); R(rn.on ? '#fff' : rn.c, rn.x + 7, rn.y + 8, 2, 2);
+    }
+  }
+  for (var ei = 0; ei < E.length; ei++) {
+    var e = E[ei], f = e.fl > 0;
+    R(f ? '#fff' : '#8a3fb5', e.x - 1, e.y + 2, 12, 9);
+    R(f ? '#fff' : '#a65ad0', e.x + 1, e.y, 8, 4);
+    R('#fff', e.x + 2, e.y + 4, 2, 2); R('#fff', e.x + 7, e.y + 4, 2, 2);
+  }
+  if (B && !B.end) {
+    var bf = B.fl > 0 && fr % 4 < 2, tel = B.m === 'tel' && fr % 6 < 3;
+    if (!(B.hp <= 0 && fr % 4 < 2)) {
+      R(bf ? '#fff' : tel ? '#c66' : '#5a3a1e', B.x, B.y, 28, 28);
+      R('#2f7d3a', B.x + 2, B.y + 2, 10, 6); R('#2f7d3a', B.x + 16, B.y + 18, 10, 8);
+      R('#f33', B.x + 6, B.y + 9, 5, 5); R('#f33', B.x + 17, B.y + 9, 5, 5);
+      R('#222', B.x + 8, B.y + 20, 12, 3);
+    }
+    if (B.m === 'slam') { x.strokeStyle = '#f55'; x.lineWidth = 2; x.beginPath(); x.arc(B.x + 14 - CX, B.y + 14 - CY, 46, 0, 7); x.stroke(); }
+  }
+  for (var ri2 = 0; ri2 < RT.length; ri2++) { var r2 = RT[ri2]; R('#a22', r2.x - 2, r2.y - 2, 5, 5); }
+  for (var si = 0; si < S.length; si++) { var sp2 = S[si]; R('#9ff', sp2.x - 2, sp2.y - 2, 4, 4); }
+  if (!(P.inv > 0 && fr % 6 < 3)) {
+    R('#2a5fd0', P.x, P.y + 4, 10, 8);
+    R('#f2c9a0', P.x + 1, P.y - 2, 8, 7);
+    R('#7a4a1a', P.x + 1, P.y - 2, 8, 3);
+  }
+  if (P.at > 0) {
+    var sx = P.x + 5 + DX[P.d] * 10, sy = P.y + 5 + DY[P.d] * 10, h = DX[P.d] !== 0;
+    R('#ddd', sx - (h ? 5 : 1), sy - (h ? 1 : 5), h ? 10 : 2, h ? 2 : 10);
+  }
+  var lx = P.x - 6 + Math.sin(fr / 15) * 3, ly = P.y - 10 + Math.cos(fr / 12) * 2;
+  R('#7ff', lx, ly, 5, 5); R('#fff', lx + 1, ly + 1, 2, 2);
+  for (var hi = 0; hi < 8; hi++) F(hi < P.hp ? '#e33' : '#411', 4 + hi * 7, 4, 6, 6);
+  x.font = 'bold 7px monospace';
+  txt('▶ ' + OBJ[obj], 4, 22, '#ffd866');
+  if (B && B.hp > 0) { F('#000', 60, H - 12, 120, 6); F('#c33', 61, H - 11, 118 * B.hp / 24, 4); }
+  var toastOn = false, toastTxt = mt;
+  if (UI && typeof UI.toastVisivel === 'function') {
+    try {
+      var dlgOn = (Dlg && Dlg.isDialogueActive && Dlg.isDialogueActive()) || st === 'talk';
+      toastOn = UI.toastVisivel(dlgOn);
+      if (toastOn && typeof UI.obterToast === 'function') toastTxt = UI.obterToast().texto;
+    } catch (e) { toastOn = tt > 0; }
+  } else toastOn = tt > 0;
+  if (toastOn) { x.font = 'bold 8px monospace'; txt(toastTxt, W / 2, 38, '#fff', 'center'); }
+  x.font = 'bold 8px monospace';
+  if (st === 'talk') {
+    F('#112', 4, 100, 232, 56);
+    F('#aac', 4, 100, 232, 1); F('#aac', 4, 155, 232, 1); F('#aac', 4, 100, 1, 56); F('#aac', 235, 100, 1, 56);
+    var cur = linhaDialogoVisivel();
+    if (cur) {
+      txt(cur[0], 10, 112, '#ffd866');
+      var visLines = wrap(cur[1], 216).slice(0, 4);
+      for (var li = 0; li < visLines.length; li++) txt(visLines[li], 10, 124 + li * 10);
+      if (cur[2] && fr % 40 < 25) txt('▼', 226, 150, '#fff');
+    } else if (Dlg && typeof Dlg.obterOpcoesEscolha === 'function') {
+      try {
+        var opts = Dlg.obterOpcoesEscolha();
+        if (opts && opts.length) {
+          txt('Escolha:', 10, 112, '#ffd866');
+          for (var oi = 0; oi < opts.length; oi++) txt((oi === Dlg.obterIndiceEscolha() ? '▶ ' : '  ') + opts[oi].label, 10, 124 + oi * 10, '#fff');
+        }
+      } catch (e) {}
+    }
+    // NOTA: typewriter avança no passo fixo (update), nunca aqui no render (dívida 03 §10 quitada).
+  }
+  if (menuOpen) {
+    F('rgba(0,0,0,.7)', 0, 0, W, H);
+    var muted2 = false;
+    try { muted2 = Aud && Aud.isMuted && Aud.isMuted(); } catch (e) {}
+    var ops = ['Continuar', muted2 ? 'Som: desligado' : 'Som: ligado', 'Reiniciar sala'];
+    txt('PAUSA', W / 2, 60, '#ffd866', 'center');
+    for (var mi = 0; mi < ops.length; mi++) txt((mi === menuIdx ? '▶ ' : '  ') + ops[mi], W / 2, 78 + mi * 12, '#fff', 'center');
+  }
+  if (st === 'over') { F('rgba(0,0,0,.7)', 0, 0, W, H); txt('Você caiu...', W / 2, 76, '#f66', 'center'); txt('Toque para tentar de novo', W / 2, 92, '#fff', 'center'); }
+  if (st === 'end') {
+    F('#000', 0, 0, W, H);
+    for (var sti = 0; sti < 30; sti++) F('#fff', (sti * 53) % W, (sti * 37) % H, 1, 1);
+    txt('FIM DO CAPÍTULO 1', W / 2, 56, '#ffd866', 'center');
+    txt('Próximo: A Cidade de Valdora', W / 2, 76, '#9cf', 'center');
+    txt('(em breve)', W / 2, 88, '#9cf', 'center');
+    if (fr % 60 < 40) txt('Toque para jogar de novo', W / 2, 126, '#fff', 'center');
+  }
+  var fadeA = 0;
+  try { if (Wd && typeof Wd.getFadeAlpha === 'function') fadeA = Wd.getFadeAlpha() || 0; } catch (e) {}
+  if (fadeA > 0) { x.fillStyle = 'rgba(0,0,0,' + Math.max(0, Math.min(1, fadeA)).toFixed(2) + ')'; x.fillRect(0, 0, W, H); }
+}
+
+var last = 0, acc = 0;
+function loop(t) {
+  requestAnimationFrame(loop);
+  acc += Math.min(100, t - last); last = t;
+  while (acc >= 16.67) { acc -= 16.67; fr++; if (st === 'play' && !menuOpen) update(); }
+  render();
+}
+
+// ---- input ----
+try {
+document.querySelectorAll('[data-k]').forEach(function (b) {
+  var k = b.dataset.k;
+  b.addEventListener('pointerdown', function (e) { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (err) {} K[k] = 1; b.classList.add('on'); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (n) { b.addEventListener(n, function () { K[k] = 0; b.classList.remove('on'); }); });
+});
+document.querySelectorAll('[data-a]').forEach(function (b) {
+  b.addEventListener('pointerdown', function (e) { e.preventDefault(); b.classList.add('on'); act(b.dataset.a); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (n) { b.addEventListener(n, function () { b.classList.remove('on'); }); });
+});
+cv.addEventListener('pointerdown', function () { if (st !== 'play' || menuOpen) act('a'); });
+var kk = { ArrowUp: 'u', KeyW: 'u', ArrowDown: 'd', KeyS: 'd', ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r' };
+var ka = { KeyZ: 'a', KeyJ: 'a', Space: 'a', Enter: 'a', KeyX: 'b', KeyK: 'b', KeyC: 'c', KeyL: 'c' };
+addEventListener('keydown', function (e) {
+  if (Aud && typeof Aud.desbloquearAudio === 'function') { try { Aud.desbloquearAudio(); } catch (err) {} }
+  if (e.code === 'KeyM' && Aud && typeof Aud.alternarMudo === 'function') { try { Aud.alternarMudo(); } catch (err) {} return; }
+  if ((e.code === 'KeyP' || e.code === 'Escape') && st === 'play') {
+    menuOpen = !menuOpen; menuIdx = 0;
+    if (UI) { try { if (menuOpen) UI.pausarJogo(); else UI.continuarJogo(); } catch (err) {} }
+    e.preventDefault(); return;
+  }
+  if (menuOpen && (e.code === 'ArrowUp' || e.code === 'KeyW')) { menuIdx = (menuIdx + 2) % 3; e.preventDefault(); return; }
+  if (menuOpen && (e.code === 'ArrowDown' || e.code === 'KeyS')) { menuIdx = (menuIdx + 1) % 3; e.preventDefault(); return; }
+  if (kk[e.code]) { K[kk[e.code]] = 1; e.preventDefault(); }
+  if (ka[e.code] && !e.repeat) { act(ka[e.code]); e.preventDefault(); }
+});
+addEventListener('keyup', function (e) { if (kk[e.code]) K[kk[e.code]] = 0; });
+addEventListener('blur', function () { K.u = K.d = K.l = K.r = 0; });
+
+// ---- wiring F0 ----
+try { if (UI && typeof UI.iniciarPausaAutomatica === 'function') UI.iniciarPausaAutomatica({}); } catch (e) {}
+try {
+  if (UI && typeof UI.definirAcaoReiniciarSala === 'function') UI.definirAcaoReiniciarSala(function () { retry(); });
+} catch (e) {}
+try { if (Sv && typeof Sv.connectSaveToWorld === 'function') Sv.connectSaveToWorld(); } catch (e) {}
+try {
+  if (Wd && typeof Wd.registerMap === 'function' && typeof Wd.createMapDef === 'function') {
+    P = P || { x: 3 * T, y: 16 * T, s: 10, d: 1, hp: 8, inv: 0, at: 0, dash: 0, cd: 0, kx: 0, ky: 0 };
+    forest();
+    try { Wd.snapshotMvpMap('forest', { spawns: { entrada: { tileX: 3, tileY: 16 } }, bossArena: false }); } catch (e) {}
+    arena();
+    try { Wd.snapshotMvpMap('arena', { spawns: { entrada: { tileX: 7, tileY: 8 } }, bossArena: true }); } catch (e) {}
+    try { Wd.gotoImmediate('forest', 'entrada'); } catch (e) {}
+    P = null;
+  }
+} catch (e) {}
+try {
+  if (Dlg && typeof Dlg.definirProvedorFlags === 'function' && G) Dlg.definirProvedorFlags(function () { return G.flags || {}; });
+} catch (e) {}
+
+try { requestAnimationFrame(loop); } catch (e) {}
+} catch (erroInput) {
+  try { requestAnimationFrame(loop); } catch (e2) {}
+}
+})();
+
+</script></body></html>

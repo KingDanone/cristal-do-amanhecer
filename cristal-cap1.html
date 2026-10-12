@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>Cristal do Amanhecer – Cap. 1</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;touch-action:none}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{margin:0;height:100%;background:#111;overflow:hidden;font-family:monospace;color:#fff}
+body{display:flex;flex-direction:column;align-items:center;justify-content:space-between;background:#111}
+#c{width:min(100vw,calc((100vh - 190px)*1.5));width:min(100vw,calc((100dvh - 190px)*1.5));aspect-ratio:3/2;image-rendering:pixelated;background:#000;display:block}
+#pad{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:520px;padding:6px 18px 12px;height:170px}
+#dp{display:grid;grid-template:repeat(3,52px)/repeat(3,52px);gap:2px}
+#ac{position:relative;width:170px;height:140px}
+.b{display:flex;align-items:center;justify-content:center;background:#334;border:2px solid #667;border-radius:12px;font-style:normal;font-size:20px;color:#ccd}
+.b.on{background:#669}
+#ac .b{position:absolute;width:60px;height:60px;border-radius:50%;font-weight:bold}
+</style></head><body>
+<canvas id="c" width="240" height="160"></canvas>
+<div id="pad">
+<div id="dp"><i class="b" data-k="u" style="grid-area:1/2">▲</i><i class="b" data-k="l" style="grid-area:2/1">◀</i><i class="b" data-k="r" style="grid-area:2/3">▶</i><i class="b" data-k="d" style="grid-area:3/2">▼</i></div>
+<div id="ac"><i class="b" data-a="a" style="right:0;top:55px">A</i><i class="b" data-a="b" style="right:62px;top:80px;width:50px;height:50px">B</i><i class="b" data-a="c" style="right:44px;top:0;width:50px;height:50px">C</i></div>
+</div>
+<script>
+const cv=document.getElementById('c'),x=cv.getContext('2d'),W=240,H=160,T=16,DX=[0,0,-1,1],DY=[1,-1,0,0];
+const OBJ=['Explore a floresta','Ative as runas na ordem certa','Pegue a chave','Abra o portão das ruínas','Derrote o Guardião das Raízes'];
+let AC,seed=7,st='title',P,E=[],S=[],RT=[],items=[],B=null,M,MW,MH,CX=0,CY=0,runes=[],step=0,hasKey=false,obj=0,mt='',tt=0,q=[],ql=0,tc=0,done=null,prev='play',fr=0,inBoss=false,swing=0,gcd=0;
+const sign={x:4*T,y:14*T};
+const K={u:0,d:0,l:0,r:0};
+function rnd(){seed=(seed*16807)%2147483647;return seed/2147483647}
+function snd(f,d=.08,t='square'){try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),g=AC.createGain();o.type=t;o.frequency.value=f;g.gain.value=.05;o.connect(g);g.connect(AC.destination);o.start();g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);o.stop(AC.currentTime+d)}catch(e){}}
+function msg(t){mt=t;tt=150}
+function say(a,cb){q=a;ql=0;tc=0;done=cb||null;prev=st;st='talk'}
+function nextLine(){if(tc/2<q[ql][1].length){tc=999;return}ql++;tc=0;if(ql>=q.length){st=prev;const f=done;done=null;if(f)f()}}
+function solidAt(px,py){const i=Math.floor(px/T),j=Math.floor(py/T);if(i<0||j<0||i>=MW||j>=MH)return 1;const c=M[j][i];return c=='#'||c=='G'}
+function blk(e,nx,ny){const s=e.s;for(const[ax,ay]of[[0,0],[s,0],[0,s],[s,s]])if(solidAt(nx+ax,ny+ay))return 1;
+if(!inBoss)for(const o of[sign,...runes])if(nx<o.x+T&&nx+s>o.x&&ny<o.y+T&&ny+s>o.y)return 1;return 0}
+function mv(e,dx,dy){if(!blk(e,e.x+dx,e.y))e.x+=dx;if(!blk(e,e.x,e.y+dy))e.y+=dy}
+function forest(){inBoss=false;MW=30;MH=20;seed=7;M=[];
+for(let j=0;j<MH;j++){M[j]=[];for(let i=0;i<MW;i++)M[j][i]=(i<1||j<1||i>MW-2||j>MH-2||rnd()<.2)?'#':'.'}
+const cl=(a,b,c,d)=>{for(let j=b;j<=d;j++)for(let i=a;i<=c;i++)M[j][i]='.'};
+const ln=(a,b,c,d)=>{cl(Math.min(a,c),b,Math.max(a,c),b+1);cl(c,Math.min(b,d),c+1,Math.max(b,d)+1)};
+cl(1,13,7,18);ln(2,16,10,10);ln(10,10,14,6);ln(14,6,20,12);ln(20,12,27,4);
+M[3][27]='G';M[3][26]='#';M[3][28]='#';M[2][27]='#';
+runes=[{x:10*T,y:10*T,c:'#4a8cff',i:0,on:0},{x:14*T,y:6*T,c:'#4ccf4c',i:1,on:0},{x:20*T,y:12*T,c:'#ee4444',i:2,on:0}];
+E=[];for(let n=0;n<500&&E.length<7;n++){const i=6+Math.floor(rnd()*22),j=2+Math.floor(rnd()*16),e={x:i*T+3,y:j*T+3,s:10,hp:2,t:0,vx:0,vy:0,kx:0,ky:0,fl:0};
+if(M[j][i]=='.'&&!blk(e,e.x,e.y)&&Math.hypot(e.x-P.x,e.y-P.y)>90)E.push(e)}}
+function arena(){inBoss=true;MW=15;MH=10;M=[];for(let j=0;j<MH;j++){M[j]=[];for(let i=0;i<MW;i++)M[j][i]=(i<1||j<1||i>MW-2||j>MH-2)?'#':'.'}
+E=[];items=[];runes=[];S=[];RT=[];P.x=7*T;P.y=8*T;P.hp=8;P.inv=60;
+B={x:106,y:28,s:28,hp:24,m:'walk',t:90,fl:0,dc:0}}
+function toBoss(){arena();obj=4;say([['Lumi','Cuidado, Kael! Essa coisa está viva! Esquive com B e use a minha magia com C!']])}
+function begin(){hasKey=false;step=0;obj=0;items=[];S=[];RT=[];swing=0;B=null;P={x:3*T,y:16*T,s:10,d:1,hp:8,inv:0,at:0,dash:0,cd:0,kx:0,ky:0};forest();st='play';
+say([['Narrador','Uma estrela caiu atrás da floresta. O pingente de Kael brilha, e algo chama seu nome.'],['Kael','Lumi, essas raízes negras estão por toda parte...'],['Lumi','Não deviam estar tão perto da vila. Vamos investigar, herói.'],['Kael','Eu não sou herói.'],['Lumi','Anotado e ignorado. Dica: A ataca com a espada, B esquiva, C dispara minha magia.']])}
+function retry(){P.hp=8;P.inv=60;P.kx=P.ky=0;if(inBoss)arena();else{P.x=3*T;P.y=16*T}st='play'}
+function read(){if(obj<1)obj=1;say([['Inscrição','Primeiro o céu, depois a folha, por fim o sangue da terra.'],['Lumi','Céu, folha, sangue... azul, verde, vermelho? Procure runas por aí!']])}
+function attack(){if(P.at>0)return;if(!inBoss&&Math.hypot(P.x+5-sign.x-8,P.y+5-sign.y-8)<22){read();return}P.at=14;swing++;snd(300,.06)}
+function dash(){if(P.dash>0||P.at>0)return;P.dash=9;P.inv=Math.max(P.inv,12);snd(500,.05,'triangle')}
+function shoot(){if(P.cd>0)return;P.cd=30;S.push({x:P.x+5,y:P.y+5,vx:DX[P.d]*2.6,vy:DY[P.d]*2.6,l:70});snd(900,.07)}
+function act(a){if(st=='title'||st=='end'){begin();return}if(st=='talk'){nextLine();return}if(st=='over'){retry();return}if(st!='play')return;if(a=='a')attack();if(a=='b')dash();if(a=='c')shoot()}
+function hurtP(sx,sy){if(P.inv>0||P.dash>0||st!='play')return;P.hp--;P.inv=60;const dx=P.x-sx,dy=P.y-sy,d=Math.hypot(dx,dy)||1;P.kx=dx/d*3;P.ky=dy/d*3;snd(110,.2,'sawtooth');if(P.hp<=0)st='over'}
+function hurtE(e,n){e.hp-=n;e.fl=8;const dx=e.x-P.x,dy=e.y-P.y,d=Math.hypot(dx,dy)||1;e.kx=dx/d*3;e.ky=dy/d*3;snd(220,.08);
+if(e.hp<=0&&Math.random()<.3)items.push({x:e.x,y:e.y,t:'h'})}
+function hitRune(r){if(r.on)return;if(r.i==step){step++;r.on=1;snd(700+step*150,.2,'triangle');msg('Runa ativada!');
+if(step==3){obj=2;items.push({x:23*T+3,y:12*T+3,t:'k'});msg('Uma chave surgiu no chão!')}}
+else{step=0;runes.forEach(o=>o.on=0);snd(110,.3,'sawtooth');msg('As runas se apagaram...')}}
+function hitBoss(n){if(B.fl>0||B.hp<=0)return;B.hp-=n;B.fl=10;snd(200,.1)}
+function ov(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function update(){
+if(P.inv>0)P.inv--;if(P.at>0)P.at--;if(P.dash>0)P.dash--;if(P.cd>0)P.cd--;if(tt>0)tt--;if(gcd>0)gcd--;
+let dx=K.r-K.l,dy=K.d-K.u;
+if(dx||dy){const n=Math.hypot(dx,dy);dx/=n;dy/=n;if(P.dash<=0){if(Math.abs(dx)>Math.abs(dy))P.d=dx>0?3:2;else P.d=dy>0?0:1}}
+if(P.dash>0){dx=DX[P.d];dy=DY[P.d]}
+const sp=P.dash>0?2.6:(P.at>0?.5:1.1);mv(P,dx*sp,dy*sp);
+if(P.kx||P.ky){mv(P,P.kx,P.ky);P.kx*=.8;P.ky*=.8}
+if(P.at>=4&&P.at<=10){const hb={x:P.x+5+DX[P.d]*11-7,y:P.y+5+DY[P.d]*11-7,w:14,h:14};
+for(const e of E)if(e.sw!==swing&&ov(hb,{x:e.x,y:e.y,w:10,h:10})){e.sw=swing;hurtE(e,2)}
+for(const r of runes)if(r.sw!==swing&&ov(hb,{x:r.x,y:r.y,w:T,h:T})){r.sw=swing;hitRune(r)}
+if(B&&B.hp>0&&B.sw!==swing&&ov(hb,{x:B.x,y:B.y,w:28,h:28})){B.sw=swing;hitBoss(2)}}
+for(const s of S){s.x+=s.vx;s.y+=s.vy;s.l--;if(solidAt(s.x,s.y))s.l=0;
+for(const r of runes)if(s.l>0&&Math.abs(s.x-r.x-8)<8&&Math.abs(s.y-r.y-8)<8){s.l=0;hitRune(r)}
+for(const e of E)if(s.l>0&&e.hp>0&&Math.hypot(s.x-e.x-5,s.y-e.y-5)<9){s.l=0;hurtE(e,1)}
+if(B&&B.hp>0&&s.l>0&&s.x>B.x&&s.x<B.x+28&&s.y>B.y&&s.y<B.y+28){s.l=0;hitBoss(1)}}
+S=S.filter(s=>s.l>0);
+for(const e of E){if(e.fl>0)e.fl--;const ex=P.x-e.x,ey=P.y-e.y,d=Math.hypot(ex,ey)||1;let vx,vy;
+if(d<70){vx=ex/d*.5;vy=ey/d*.5}else{if(--e.t<=0){e.t=50+Math.random()*60;e.vx=(Math.random()-.5)*.7;e.vy=(Math.random()-.5)*.7}vx=e.vx;vy=e.vy}
+mv(e,vx,vy);if(e.kx||e.ky){mv(e,e.kx,e.ky);e.kx*=.8;e.ky*=.8}if(d<10)hurtP(e.x,e.y)}
+E=E.filter(e=>e.hp>0);
+for(const it of items)if(!it.g&&Math.hypot(P.x-it.x,P.y-it.y)<11){it.g=1;if(it.t=='k'){hasKey=true;obj=3;msg('Chave obtida! Vá ao portão.');snd(1000,.3,'triangle')}else{P.hp=Math.min(8,P.hp+2);snd(800,.1)}}
+items=items.filter(i=>!i.g);
+if(!inBoss&&Math.hypot(P.x+5-27*T-8,P.y+5-3*T-8)<20){if(hasKey)toBoss();else if(gcd<=0){msg('Trancado. Falta uma chave.');gcd=120}}
+if(B){if(B.fl>0)B.fl--;
+if(B.hp<=0){if(++B.dc>70&&!B.end){B.end=1;RT=[];say([['Narrador','O Guardião das Raízes desmorona. Entre as raízes surge uma inscrição antiga.'],['Inscrição','Quando a primeira estrela cair, aquele que carrega a lembrança abrirá o caminho.'],['Lumi','Kael... esse símbolo é idêntico ao do seu pingente.'],['Kael','Do meu pai...? Então ele sabia de tudo isso.'],['Narrador','Do alto de uma colina, uma figura encapuzada observa a ruína... e desaparece quando Kael se vira.']],()=>{st='end'})}}
+else{const bx=B.x+14,by=B.y+14,ex=P.x+5-bx,ey=P.y+5-by,d=Math.hypot(ex,ey)||1;B.t--;
+if(B.m=='walk'){B.x+=ex/d*.4;B.y+=ey/d*.4;if(B.t<=0){B.m='tel';B.t=40}}
+else if(B.m=='tel'){if(B.t<=0){B.m='slam';B.t=14;snd(80,.4,'sawtooth');if(B.hp<=12)for(let a=0;a<8;a++)RT.push({x:bx,y:by,vx:Math.cos(a*Math.PI/4)*1.3,vy:Math.sin(a*Math.PI/4)*1.3,l:140})}}
+else if(B.m=='slam'){if(d<46)hurtP(bx,by);if(B.t<=0){B.m='rest';B.t=50}}
+else if(B.t<=0){B.m='walk';B.t=(B.hp<=12?65:90)+Math.random()*30}
+B.x=Math.max(T,Math.min(MW*T-T-28,B.x));B.y=Math.max(T,Math.min(MH*T-T-28,B.y));
+if(d<22&&B.m!='slam')hurtP(bx,by)}}
+for(const r of RT){r.x+=r.vx;r.y+=r.vy;r.l--;if(solidAt(r.x,r.y))r.l=0;if(Math.hypot(P.x+5-r.x,P.y+5-r.y)<8){r.l=0;hurtP(r.x,r.y)}}
+RT=RT.filter(r=>r.l>0);
+CX=Math.max(0,Math.min(MW*T-W,P.x+5-W/2));CY=Math.max(0,Math.min(MH*T-H,P.y+5-H/2))}
+function R(c,a,b,w,h){x.fillStyle=c;x.fillRect(Math.round(a-CX),Math.round(b-CY),w,h)}
+function F(c,a,b,w,h){x.fillStyle=c;x.fillRect(a,b,w,h)}
+function wrap(t,w){const o=[];let l='';for(const s of t.split(' ')){if(x.measureText(l+s).width>w){o.push(l);l=s+' '}else l+=s+' '}o.push(l);return o}
+function txt(t,a,b,c='#fff',al='left'){x.textAlign=al;x.fillStyle='#000';x.fillText(t,a+1,b+1);x.fillStyle=c;x.fillText(t,a,b)}
+function render(){x.font='bold 8px monospace';x.textBaseline='alphabetic';F('#000',0,0,W,H);
+if(st=='title'){for(let i=0;i<40;i++)F('#fff',(i*53)%W,(i*37)%H,1,1);txt('A LENDA DO CRISTAL',W/2,50,'#ffd866','center');txt('DO AMANHECER',W/2,62,'#ffd866','center');txt('Capítulo 1: A Floresta dos Sussurros',W/2,84,'#9cf','center');if(fr%60<40)txt('Toque para começar',W/2,124,'#fff','center');return}
+if(!P)return;
+for(let j=Math.max(0,Math.floor(CY/T));j<Math.min(MH,Math.ceil((CY+H)/T)+1);j++)for(let i=Math.max(0,Math.floor(CX/T));i<Math.min(MW,Math.ceil((CX+W)/T)+1);i++){const c=M[j][i],a=i*T,b=j*T;
+R(inBoss?'#5a5a6a':'#3d8b37',a,b,T,T);
+if(c=='.'){if((i*7+j*13)%5==0)R(inBoss?'#666677':'#4aa043',a+4,b+5,2,2);if(!inBoss&&(i*31+j*17)%19==0)R('#2a1a30',a+3,b+4,6,4)}
+else if(c=='#'){if(inBoss){R('#33334a',a,b,T,T);R('#444460',a+1,b+1,14,6)}else{R('#1c5a2a',a,b,T,13);R('#2f7d3a',a+2,b+1,12,8);R('#5a3a1e',a+6,b+12,4,4)}}
+else if(c=='G'){R('#666',a,b,T,T);R(hasKey?'#352':'#222',a+3,b+3,10,13);R(hasKey?'#7f7':'#fc4',a+10,b+9,2,2)}}
+for(const it of items)it.t=='k'?(R('#fc4',it.x,it.y+2,8,3),R('#fc4',it.x,it.y,4,7)):(R('#f44',it.x,it.y,3,3),R('#f44',it.x+4,it.y,3,3),R('#f44',it.x,it.y+2,7,4));
+if(!inBoss){R('#8a5a2a',sign.x+3,sign.y+3,10,7);R('#5a3a1e',sign.x+7,sign.y+10,2,6);
+for(const r of runes){R('#666',r.x+2,r.y+3,12,13);R(r.on?r.c:'#333',r.x+4,r.y+5,8,8);R(r.on?'#fff':r.c,r.x+7,r.y+8,2,2)}}
+for(const e of E){const f=e.fl>0;R(f?'#fff':'#8a3fb5',e.x-1,e.y+2,12,9);R(f?'#fff':'#a65ad0',e.x+1,e.y,8,4);R('#fff',e.x+2,e.y+4,2,2);R('#fff',e.x+7,e.y+4,2,2)}
+if(B&&!B.end){const f=B.fl>0&&fr%4<2,t=B.m=='tel'&&fr%6<3;if(!(B.hp<=0&&fr%4<2)){R(f?'#fff':t?'#c66':'#5a3a1e',B.x,B.y,28,28);R('#2f7d3a',B.x+2,B.y+2,10,6);R('#2f7d3a',B.x+16,B.y+18,10,8);R('#f33',B.x+6,B.y+9,5,5);R('#f33',B.x+17,B.y+9,5,5);R('#222',B.x+8,B.y+20,12,3)}
+if(B.m=='slam'){x.strokeStyle='#f55';x.lineWidth=2;x.beginPath();x.arc(B.x+14-CX,B.y+14-CY,46,0,7);x.stroke()}}
+for(const r of RT)R('#a22',r.x-2,r.y-2,5,5);
+for(const s of S)R('#9ff',s.x-2,s.y-2,4,4);
+if(!(P.inv>0&&fr%6<3)){R('#2a5fd0',P.x,P.y+4,10,8);R('#f2c9a0',P.x+1,P.y-2,8,7);R('#7a4a1a',P.x+1,P.y-2,8,3)}
+if(P.at>0){const sx=P.x+5+DX[P.d]*10,sy=P.y+5+DY[P.d]*10,h=DX[P.d]!=0;R('#ddd',sx-(h?5:1),sy-(h?1:5),h?10:2,h?2:10)}
+const lx=P.x-6+Math.sin(fr/15)*3,ly=P.y-10+Math.cos(fr/12)*2;R('#7ff',lx,ly,5,5);R('#fff',lx+1,ly+1,2,2);
+for(let i=0;i<8;i++)F(i<P.hp?'#e33':'#411',4+i*7,4,6,6);
+x.font='bold 7px monospace';txt('▶ '+OBJ[obj],4,22,'#ffd866');
+if(B&&B.hp>0){F('#000',60,H-12,120,6);F('#c33',61,H-11,118*B.hp/24,4)}
+if(tt>0){x.font='bold 8px monospace';txt(mt,W/2,38,'#fff','center')}
+x.font='bold 8px monospace';
+if(st=='talk'){F('#112',4,100,232,56);F('#aac',4,100,232,1);F('#aac',4,155,232,1);F('#aac',4,100,1,56);F('#aac',235,100,1,56);
+const l=q[ql];txt(l[0],10,112,'#ffd866');wrap(l[1].slice(0,Math.floor(++tc/2)),216).slice(0,4).forEach((s,i)=>txt(s,10,124+i*10));
+if(tc/2>=l[1].length&&fr%40<25)txt('▼',226,150,'#fff')}
+if(st=='over'){F('rgba(0,0,0,.7)',0,0,W,H);txt('Você caiu...',W/2,76,'#f66','center');txt('Toque para tentar de novo',W/2,92,'#fff','center')}
+if(st=='end'){F('#000',0,0,W,H);for(let i=0;i<30;i++)F('#fff',(i*53)%W,(i*37)%H,1,1);txt('FIM DO CAPÍTULO 1',W/2,56,'#ffd866','center');txt('Próximo: A Cidade de Valdora',W/2,76,'#9cf','center');txt('(em breve)',W/2,88,'#9cf','center');if(fr%60<40)txt('Toque para jogar de novo',W/2,126,'#fff','center')}}
+let last=0,acc=0;function loop(t){requestAnimationFrame(loop);acc+=Math.min(100,t-last);last=t;while(acc>=16.67){acc-=16.67;fr++;if(st=='play')update()}render()}
+document.querySelectorAll('[data-k]').forEach(b=>{const k=b.dataset.k;b.addEventListener('pointerdown',e=>{e.preventDefault();b.setPointerCapture(e.pointerId);K[k]=1;b.classList.add('on')});
+['pointerup','pointercancel','lostpointercapture'].forEach(n=>b.addEventListener(n,()=>{K[k]=0;b.classList.remove('on')}))});
+document.querySelectorAll('[data-a]').forEach(b=>{b.addEventListener('pointerdown',e=>{e.preventDefault();b.classList.add('on');act(b.dataset.a)});['pointerup','pointercancel','pointerleave'].forEach(n=>b.addEventListener(n,()=>b.classList.remove('on')))});
+cv.addEventListener('pointerdown',()=>{if(st!='play')act('a')});
+const kk={ArrowUp:'u',KeyW:'u',ArrowDown:'d',KeyS:'d',ArrowLeft:'l',KeyA:'l',ArrowRight:'r',KeyD:'r'},ka={KeyZ:'a',KeyJ:'a',Space:'a',Enter:'a',KeyX:'b',KeyK:'b',KeyC:'c',KeyL:'c'};
+addEventListener('keydown',e=>{if(kk[e.code]){K[kk[e.code]]=1;e.preventDefault()}if(ka[e.code]&&!e.repeat){act(ka[e.code]);e.preventDefault()}});
+addEventListener('keyup',e=>{if(kk[e.code])K[kk[e.code]]=0});
+addEventListener('blur',()=>{K.u=K.d=K.l=K.r=0});
+requestAnimationFrame(loop);
+</script></body></html>
