@@ -189,6 +189,14 @@
     return { texto: textoToast, tempo: tempoToast };
   }
 
+  // B7: descarta toasts enfileirados (ex.: troca de sala; mensagens velhas
+  // fora de contexto confundem mais do que informam).
+  function limparToasts() {
+    textoToast = '';
+    tempoToast = 0;
+    filaToast = [];
+  }
+
   /**
    * Linha Y do toast: abaixo do objetivo (Y=22) e longe da caixa de
    * diálogo (y 100–156), funcionando no canvas 240x160.
@@ -258,6 +266,7 @@
     updateToast: updateToast,
     toastVisivel: toastVisivel,
     obterToast: obterToast,
+    limparToasts: limparToasts,
     obterYDoToast: obterYDoToast,
     iniciarTransicao: iniciarTransicao,
     updateFade: updateFade,

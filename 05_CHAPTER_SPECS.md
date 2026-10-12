@@ -70,6 +70,12 @@ Arena 15×10, contato a <22 px = 1 dano. Ciclo (frames a 60 Hz):
 - MVP: floresta → runas → chave → portão → chefe → fim, sem soft-lock
   (chave e portão alcançáveis por BFS; portão trava com aviso sem chave).
 - F1 completo: da casa de Kael ao encapuzado em ~15–20 min, roteiro = Bíblia.
+  **STATUS 2026-10-12: ENTREGUE E VERIFICADO** (validate + audit 19/19 + smoke 37/37
+  + browser BC-F1-01..BC-F1-16, evidências em `evidence/f1-browser/01..06`):
+  Brisamar jogável (mãe/morador/Darius c/ escolha/Orin/boneco), nome editável,
+  cena da estrela c/ overlay, floresta (placa, arbusto-chave, runas, Lumi, magia,
+  morcegos), ruin_entry, chefe c/ barra nomeada + figura encapuzada + fim,
+  continue multi-mapa, temas musicais por mapa. Bugs B5–B7 corrigidos no ciclo.
 
 ---
 

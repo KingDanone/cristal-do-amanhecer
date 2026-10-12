@@ -217,6 +217,127 @@ t('A15 HP canônicos (jogador 8, guardião 24)',
   /hp:\s*24|vidaMaxima:\s*24|hp=8|hp:\s*8|MAX_HP\s*=\s*8/.test(joined),
   'valores de combate alterados sem decisão');
 
+// ---- A16/A17/A18: conteúdo F1 (mapas + diálogos) ----
+// Sandbox SEM propriedade `globalThis` própria: os arquivos fazem
+// `globalThis.MAP_X = ...`, que cai na raiz do sandbox.
+function defsConteudo() {
+  const sb = { console };
+  vm.createContext(sb);
+  for (const arq of ['maps/brisamar.js', 'maps/forest.js', 'maps/ruin_entry.js', 'data/dialogs_f1.js']) {
+    vm.runInContext(read(path.join(SRC, arq)), sb, { timeout: 1000 });
+  }
+  return sb;
+}
+let DEFS = null, defsErr = '';
+try { DEFS = defsConteudo(); } catch (e) { defsErr = String(e.message); }
+t('A16-pre defs de conteúdo carregam sem throw', !!DEFS, defsErr);
+
+function solidoDef(def, tx, ty) {
+  if (tx < 0 || ty < 0 || tx >= def.w || ty >= def.h) return true;
+  const ch = def.tiles[ty][tx];
+  return !!(def.legend && def.legend[ch] && def.legend[ch].solid);
+}
+function bfs(def, sx, sy, bloqueios) {
+  const key = (a, b) => a + ',' + b;
+  const visto = new Set([key(sx, sy)]);
+  const fila = [[sx, sy]];
+  const bloq = new Set((bloqueios || []).map(p => key(p[0], p[1])));
+  while (fila.length) {
+    const [cx, cy] = fila.pop();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = cx + dx, ny = cy + dy, k = key(nx, ny);
+      if (visto.has(k) || bloq.has(k) || solidoDef(def, nx, ny)) continue;
+      visto.add(k); fila.push([nx, ny]);
+    }
+  }
+  return visto;
+}
+function pertoDe(alc, tx, ty) {
+  return alc.has(tx + ',' + ty) || alc.has((tx + 1) + ',' + ty) || alc.has((tx - 1) + ',' + ty) ||
+    alc.has(tx + ',' + (ty + 1)) || alc.has(tx + ',' + (ty - 1));
+}
+// A16: alcançabilidade anti soft-lock de layout (spawns → NPCs/objetos/saídas)
+let bfsOk = true, bfsBad = '';
+if (DEFS) {
+  try {
+    // Brisamar a partir de home(3,6); NPCs/objetos bloqueiam a própria célula
+    const br = DEFS.MAP_BRISAMAR;
+    const bloqBr = br.npcs.map(n => [n.tx, n.ty])
+      .concat(br.objects.filter(o => o.type === 'sign' || o.type === 'dummy').map(o => [o.tx, o.ty]));
+    const alcBr = bfs(br, 3, 6, bloqBr);
+    for (const n of br.npcs) if (!pertoDe(alcBr, n.tx, n.ty)) { bfsOk = false; bfsBad = 'brisamar npc ' + n.id; break; }
+    if (bfsOk) for (const [qx, qy, qn] of [[6, 5, 'placa'], [15, 4, 'boneco']]) {
+      if (!pertoDe(alcBr, qx, qy)) { bfsOk = false; bfsBad = 'brisamar ' + qn; break; }
+    }
+    if (bfsOk && !(alcBr.has('18,12') && alcBr.has('19,12'))) { bfsOk = false; bfsBad = 'brisamar saída leste'; }
+    // Floresta a partir de fromBrisamar(3,16)
+    if (bfsOk) {
+      const fo = DEFS.MAP_FOREST;
+      const bloqFo = [[4, 14]].concat(fo.runes.map(r => [r.tx, r.ty])).concat([[5, 17]]);
+      const alcFo = bfs(fo, 3, 16, bloqFo);
+      const alvosFo = [[4, 14, 'placa'], [10, 10, 'runa0'], [14, 6, 'runa1'], [20, 12, 'runa2'],
+        [23, 12, 'chave-enigma'], [5, 17, 'arbusto'], [14, 8, 'pedra-azul'],
+        [1, 15, 'saída-oeste'], [2, 18, 'saída-oeste2'], [27, 4, 'portão-frente']];
+      for (const [qx, qy, qn] of alvosFo) {
+        if (!pertoDe(alcFo, qx, qy) && !alcFo.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'forest ' + qn; break; }
+      }
+    }
+    // Ruína a partir de entry(7,8)
+    if (bfsOk) {
+      const ru = DEFS.MAP_RUIN_ENTRY;
+      const insc = (ru.objects || []).find(o => o.type === 'sign') || { tx: 7, ty: 5 };
+      const alcRu = bfs(ru, 7, 8, [[insc.tx, insc.ty]]);
+      if (!pertoDe(alcRu, insc.tx, insc.ty)) { bfsOk = false; bfsBad = 'ruína inscrição'; }
+      if (bfsOk && !(['6,0', '7,0', '6,1', '7,1'].some(k => alcRu.has(k)))) { bfsOk = false; bfsBad = 'ruína porta norte'; }
+      if (bfsOk && !(['6,9', '7,9', '6,8', '7,8'].some(k => alcRu.has(k)))) { bfsOk = false; bfsBad = 'ruína porta sul'; }
+    }
+  } catch (e) { bfsOk = false; bfsBad = String(e.message); }
+} else { bfsOk = false; bfsBad = 'defs não carregaram'; }
+t('A16 BFS: spawns alcançam NPCs/objetos/saídas (anti soft-lock)', bfsOk, bfsBad);
+
+// A17: todo diálogo referenciado pelos mapas existe em DIALOGS_F1
+let refOk = true, refBad = '';
+if (DEFS && DEFS.DIALOGS_F1) {
+  try {
+    const D = DEFS.DIALOGS_F1;
+    const refs = [];
+    for (const def of [DEFS.MAP_BRISAMAR, DEFS.MAP_FOREST, DEFS.MAP_RUIN_ENTRY]) {
+      if (!def) continue;
+      for (const n of (def.npcs || [])) { if (n.dialogs) { refs.push(n.dialogs.first); if (n.dialogs.repeat) refs.push(n.dialogs.repeat); } }
+      for (const o of (def.objects || [])) if (o.dialog) refs.push(o.dialog);
+      if (def.sign && def.sign.dialog) refs.push(def.sign.dialog);
+      for (const s of (def.exits || [])) { if (s.leaveDialog) refs.push(s.leaveDialog); if (s.enterDialog) refs.push(s.enterDialog); }
+    }
+    for (const r of refs) if (!D[r]) { refOk = false; refBad = 'diálogo ausente: ' + r; break; }
+  } catch (e) { refOk = false; refBad = String(e.message); }
+} else { refOk = false; refBad = 'DIALOGS_F1 não carregou'; }
+t('A17 diálogos referenciados existem', refOk, refBad);
+
+// A18: regressão — tiles da floresta idênticos ao LCG canônico (seed=7)
+let lcgOk = true, lcgBad = '';
+if (DEFS && DEFS.MAP_FOREST) {
+  try {
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    const MW = 30, MH = 20, M = [];
+    for (let j = 0; j < MH; j++) {
+      M[j] = [];
+      for (let i = 0; i < MW; i++) M[j][i] = (i < 1 || j < 1 || i > MW - 2 || j > MH - 2 || rnd() < 0.2) ? '#' : '.';
+    }
+    const cl = (a, b, c, d) => { for (let j = b; j <= d; j++) for (let i = a; i <= c; i++) M[j][i] = '.'; };
+    const ln = (a, b, c, d) => { cl(Math.min(a, c), b, Math.max(a, c), b + 1); cl(c, Math.min(b, d), c + 1, Math.max(b, d) + 1); };
+    cl(1, 13, 7, 18); ln(2, 16, 10, 10); ln(10, 10, 14, 6); ln(14, 6, 20, 12); ln(20, 12, 27, 4);
+    M[3][27] = 'G'; M[3][26] = '#'; M[3][28] = '#'; M[2][27] = '#';
+    const esperado = M.map(r => r.join(''));
+    const atual = DEFS.MAP_FOREST.tiles;
+    if (atual.length !== esperado.length) { lcgOk = false; lcgBad = 'altura difere'; }
+    else for (let j = 0; j < esperado.length; j++) {
+      if (atual[j] !== esperado[j]) { lcgOk = false; lcgBad = 'linha ' + j + ' difere'; break; }
+    }
+  } catch (e) { lcgOk = false; lcgBad = String(e.message); }
+} else { lcgOk = false; lcgBad = 'MAP_FOREST não carregou'; }
+t('A18 floresta idêntica ao LCG canônico', lcgOk, lcgBad);
+
 console.log('1..' + n);
 console.log(fail === 0 ? '# SEVERA PASS ' + n + '/' + n : '# SEVERA FAIL (' + fail + ' falhas)');
 process.exit(fail === 0 ? 0 : 1);

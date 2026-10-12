@@ -30,28 +30,39 @@ Game.FLAG_DEFAULTS = {
   frag_blue: false,
   frag_red: false,
   darius_spared: false,
-  final_choice: null
+  final_choice: null,
+  // D-17: flags de história F1 (cenas do prólogo + Cap.1). Persistem no save
+  // como as demais; mantêm cenas idempotentes (nunca repetem após reload).
+  // D-17 também: gating de progressão — espada exige got_sword, magia exige
+  // met_lumi, saída leste de Brisamar exige got_sword (só aviso, sem trava).
+  woke_up: false,
+  festival_seen: false,
+  darius_left: false,
+  kael_defiant: false,
+  met_orin: false,
+  got_sword: false,
+  tutorial_done: false,
+  star_seen: false,
+  met_lumi: false,
+  entered_ruin: false,
+  boss_started: false,
+  bush_key_found: false,
+  intro_floresta: false
 };
+
+// Replica os defaults em getDefaultFlags (única fonte = FLAG_DEFAULTS).
 
 Game.FINAL_CHOICES_VALIDOS = ['restaurar', 'destruir', 'lumi'];
 
 // Devolve um objeto novo com os defaults (nunca a referência interna).
 Game.getDefaultFlags = function () {
-  return {
-    chapter: 1,
-    sign_read: false,
-    runes_done: false,
-    step: 0,
-    has_key_c1: false,
-    boss1_defeated: false,
-    cat_found: false,
-    secret_records: 0,
-    frag_green: false,
-    frag_blue: false,
-    frag_red: false,
-    darius_spared: false,
-    final_choice: null
-  };
+  var copia = {};
+  for (var chave in Game.FLAG_DEFAULTS) {
+    if (Object.prototype.hasOwnProperty.call(Game.FLAG_DEFAULTS, chave)) {
+      copia[chave] = Game.FLAG_DEFAULTS[chave];
+    }
+  }
+  return copia;
 };
 
 // Valida/coage um valor para uma chave conhecida. Retorna {ok, valor}.

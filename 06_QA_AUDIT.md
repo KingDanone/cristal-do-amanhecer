@@ -16,12 +16,13 @@ Portão antes de cada commit: `sh tools/validate.sh`. **Commit só com VALIDATE 
 
 ## Status atual (2026-10-12, pós-camada de navegador)
 - `node --check` em todos os `.js` (src + tools): **PASS**.
-- `tools/build.js --check-size`: **PASS** (último run: 116,2 KB / 250 KB, 13 módulos + shell).
-- `tools/smoke.js`: **PASS 36/36**.
-- `tools/audit.js` (severa): **PASS 15/15**.
-- Browser MCP Chromium (BC-01..BC-13): **PASS**, console **0 mensagens**; evidências em `evidence/f0-browser/`.
-- `dist/cristal.html` é o entregável jogável atual (F0 integrado); `cristal-cap1.html` segue
-  intacto como referência/régua do smoke. Próxima fase: F1 (Brisamar → floresta → ruína → chefe).
+- `tools/build.js --check-size`: **PASS** (último run: ~147 KB / 250 KB, 14 módulos + shell).
+- `tools/smoke.js`: **PASS 37/37**.
+- `tools/audit.js` (severa): **PASS 19/19** (A16 BFS nos 3 mapas, A17 refs de diálogo, A18 regressão LCG).
+- Browser MCP Chromium F0 (BC-01..BC-13): **PASS**, console **0 mensagens**; evidências em `evidence/f0-browser/`.
+- Browser MCP Chromium F1 (BC-F1-01..BC-F1-16): **PASS** (ver seção abaixo); evidências em `evidence/f1-browser/01..06`.
+- `dist/cristal.html` é o entregável jogável atual (F1: Brisamar → floresta → ruína → chefe); `cristal-cap1.html` segue
+  intacto como referência/régua do smoke. Próxima fase: F2 (Valdora).
 
 ## Checklist por fase
 Legenda: ✅ coberto por teste automatizado · 🔲 manual · — não se aplica.
@@ -106,7 +107,34 @@ Severidade: qualquer BC FAIL bloqueia o commit da fase até corrigir e re-rodar.
 4. iOS Safari (safe-area real, gestos do sistema) e Android Chrome em aparelhos reais — planejado no F6.
 5. 60 fps em **celular médio** real (desktop Chromium ≠ alvo).
 6. `visibilitychange` real (troca de aba) — `document.hidden` é imutável via devtools; pausa automática revisada só em código.
-7. Rota completa do chefe até a vitória **no navegador** (ciclo já provado no smoke headless 36/36; no browser foi validado spawn/arena/barra/dano; o MVP usa `cristal-cap1.html` como réguas).
+7. Rota do chefe 100% orgânica **no navegador** (morte validada em BC-F1-14 com cirurgia de estado `B.hp=2`; ciclo completo provado no smoke 37/37; spawn/arena/barra/dano/morte/vitória/fim provados no browser).
+8. (F1, novo) Timbre/arranjo musical **audível** por tema — validado só troca de `temaAtual()` por mapa + ausência de throw; audição humana pendente.
+9. (F1, novo) Playthrough cronometrado de ~15–20 min por humano (aceite de duração) — fluxo completo provado por teleporte+estados, não em tempo real.
+
+### Auditoria de navegador F1 (BC-F1-01..BC-F1-16) — 2026-10-12, PASS
+Roteiro executado no bundle F1 (`dist/cristal.html`, Chromium MCP, teclado sintético):
+
+| # | Item | Evidência/resultado |
+|---|---|---|
+| BC-F1-01 | Boot limpo + `title_theme` pendente pré-gesto | console 0 msgs; `temaAtual()=='title_theme'` |
+| BC-F1-02 | Nome editável persiste e substitui nos diálogos | título `Nome: LBEL`; intro/arena mostram "Lbel" |
+| BC-F1-03 | `wake_up` aparece (sem clobber) + typewriter visível | 1ª fala em <1 s; `brisamar_theme` ao entrar |
+| BC-F1-04 | Mãe (1ª + repeat), morador, Darius | falas exatas; repeat idêntico |
+| BC-F1-05 | Escolha de Darius (2 opções) + reply + flag | UI de escolha; `darius_left=true` |
+| BC-F1-06 | Leste sem espada = aviso, sem transição | toast exato; MW segue 20 |
+| BC-F1-07 | Orin + boneco (tutorial) + flags | `got_sword`, `tutorial_done` — **revelou B5** (NPC sombreava objeto; fix validado) |
+| BC-F1-08 | Starfall (diálogo) → cena (overlay) → floresta + intro | `02-cena-estrela.png` (faixa vermelha + sombra); `star_seen`, `intro_floresta` |
+| BC-F1-09 | Placa da floresta + flag | inscrição exata; `sign_read` — **revelou placa ausente** (condição `!pedraAzul`; fix validado) |
+| BC-F1-10 | Arbusto-chave (golpe revela + coleta) | `bush_key_found`, diálogo, `has_key_c1` |
+| BC-F1-11 | Runas em ordem via espada → chave do enigma | step 1→2→3, `runes_done` |
+| BC-F1-12 | Pedra azul → Lumi (6 falas) + magia C | `met_lumi`; `P.cd>0` após C |
+| BC-F1-13 | Portão → ruína + `ruin_enter`; placa; norte → arena + `boss_intro` | MW 15; `boss_theme`; barra nomeada visível |
+| BC-F1-14 | Morte do chefe → vitória → figura → fim | `boss1_defeated`; `04-figura-encapuzada.png`; `05-fim-cap1.png` — **revelou B6** (clobber de `st='end'`; fix validado) |
+| BC-F1-15 | Reload + Continuar (floresta, HP/flags/posição) | MW 30, HP 2 preservado, `met_lumi`, sem diálogo zumbi |
+| BC-F1-16 | Pausa durante fade não quebra transição | chegada + retomada + volta íntegras |
+
+Bugs do ciclo (D-19): **B5** (alvo-A por proximidade), **B6** (`advanceTalk` preserva `st` do callback), **B7** (toasts descartados na troca de sala).
+Anomalia não-reproduzida: 1 ocorrência de cena→ficar em Brisamar com flags zeradas em meio a screenshots (suspeita: visibilidade da aba durante captura MCP + corrida de transição; 10+ transições seguintes ok, incluindo pausa-no-fade). Registrada, sem workaround cego; camada BC-F1-16 cobre a interação pausa×fade.
 
 Evidências desta rodada: `evidence/f0-browser/01..07` (+ variantes `01b`, `04`, `06`).
 
@@ -120,3 +148,7 @@ Evidências desta rodada: `evidence/f0-browser/01..07` (+ variantes `01b`, `04`,
 | 2026-10-12 | Browser MCP Chromium rodada 1 (BC-01..12) | **FAIL** — achou B1–B4 |
 | 2026-10-12 | Fixes B1–B4 + `sh tools/validate.sh` (build 116,1 KB) | VALIDATE PASS |
 | 2026-10-12 | Browser MCP Chromium rodada 2 (BC-01..13, evidências 01b/04/05/06/07) | **PASS tudo; console 0 msgs** |
+| 2026-10-12 | `sh tools/validate.sh` (F1: build ~147 KB + smoke 37/37 + audit 19/19) | VALIDATE PASS |
+| 2026-10-12 | Browser MCP Chromium F1 rodada 1 (BC-F1) | **FAIL** — achou B5 (sombra de NPC), placa ausente, clobber de `begin()` |
+| 2026-10-12 | Fixes + rodada 2 | **FAIL** — achou B6 (clobber de `st='end'`) + backlog de toasts (B7) |
+| 2026-10-12 | Fixes B6/B7 + rodada 3 (BC-F1-01..16, evidências 01..06) | **PASS tudo; console 0 msgs** |

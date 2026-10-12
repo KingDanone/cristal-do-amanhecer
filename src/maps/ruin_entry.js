@@ -40,12 +40,12 @@ const MAP_RUIN_ENTRY = {
   },
   exits: [
     // Porta norte → arena do chefe (fade + diálogo de abertura).
-    { tx: 6, ty: 0, w: 3, h: 2, to: "boss", spawn: "enter", transition: "fade", enterDialog: "boss_intro" },
+    { tx: 6, ty: 0, w: 3, h: 2, to: "arena", spawn: "entrada", transition: "fade", enterDialog: "boss_intro" },
     // Porta sul → volta à floresta, junto ao portão.
     { tx: 6, ty: 8, w: 3, h: 2, to: "forest", spawn: "fromRuin", transition: "fade" },
   ],
   objects: [
-    { type: "sign", tx: 7, ty: 5, name: "Inscrição gasta", dialog: "ruin_sign" },
+    { type: "sign", tx: 5, ty: 5, name: "Inscrição gasta", dialog: "ruin_sign" },
     { type: "deco", kind: "tocha", tx: 2, ty: 2, anim: true, solid: false },
     { type: "deco", kind: "tocha", tx: 12, ty: 2, anim: true, solid: false },
   ],
