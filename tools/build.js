@@ -95,6 +95,7 @@ function defaultShell(css, js) {
   return (
     '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">\n' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">\n' +
+    '<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💠</text></svg>">\n' +
     '<title>Cristal do Amanhecer</title>\n' +
     '<style>\n' + css + '\n</style></head><body>\n' +
     '<canvas id="c" width="240" height="160"></canvas>\n' +

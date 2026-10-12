@@ -100,6 +100,7 @@ function playDialogId(id, cb) {
 }
 function syncObjFromFlags() {
   try {
+    if (inBoss) { obj = 4; return; } // durante o chefe, o objetivo é sempre "Derrote o Guardião"
     if (G && typeof G.indiceObjetivoCap1 === 'function') obj = G.indiceObjetivoCap1();
   } catch (e) {}
 }
@@ -154,16 +155,27 @@ function arena() {
   B = { x: 106, y: 28, s: 28, hp: 24, m: 'walk', t: 90, fl: 0, dc: 0, end: 0, sw: -1 };
   espelharGlobals();
 }
+function criarJogador() {
+  return { x: 3 * T, y: 16 * T, s: 10, d: 1, hp: 8, inv: 0, at: 0, dash: 0, cd: 0, kx: 0, ky: 0 };
+}
+// Marca o mapa atual no World para o save registrar o id correto (ponte D-12).
+function marcarMapaAtual(id) {
+  try { if (Wd) Wd.currentId = id; } catch (e) {}
+}
 function toBoss() {
   arena(); obj = 4;
+  marcarMapaAtual('arena');
   try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena'); } catch (e) {}
   if (!playDialogId('boss_intro')) say([['Lumi', 'Cuidado, Kael! Essa coisa está viva! Esquive com B e use a minha magia com C!']]);
 }
 function begin() {
   try { if (G && typeof G.resetFlags === 'function') G.resetFlags(); } catch (e) {}
+  try { if (Sv && typeof Sv.connectSaveToWorld === 'function') Sv.connectSaveToWorld(); } catch (e) {}
   obj = 0; items = []; S = []; RT = []; swing = 0; B = null;
-  P = { x: 3 * T, y: 16 * T, s: 10, d: 1, hp: 8, inv: 0, at: 0, dash: 0, cd: 0, kx: 0, ky: 0 };
-  forest(); st = 'play';
+  P = criarJogador();
+  forest();
+  marcarMapaAtual('forest');
+  st = 'play';
   try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('forest'); } catch (e) {}
   say([
     ['Narrador', 'Uma estrela caiu atrás da floresta. O pingente de Kael brilha, e algo chama seu nome.'],
@@ -210,6 +222,36 @@ function setKey() {
   } catch (e) { if (obj < 3) obj = 3; }
   try { if (Sv && typeof Sv.saveOnKeyItem === 'function') Sv.saveOnKeyItem('chave-c1'); } catch (e) {}
 }
+// Continuar: reconstrói a sala certa a partir do save e reaplica flags/posição.
+// Bug B3 (audit browser): antes chamava begin() + loadGame() — reconstruía sempre
+// a floresta (posição salva na arena caía fora de área válida) e deixava a fila de
+// diálogo da intro "zumbi" (toast suprimido para sempre). Agora é restauração limpa.
+function continuarSalvo() {
+  try {
+    if (!Sv || typeof Sv.describeSave !== 'function' || typeof Sv.loadGame !== 'function') return false;
+    var desc = Sv.describeSave();
+    if (!desc) return false;
+    try { if (Sv.connectSaveToWorld) Sv.connectSaveToWorld(); } catch (e) {}
+    P = criarJogador();
+    items = []; S = []; RT = []; B = null; swing = 0;
+    if (desc.mapa === 'arena') arena(); else forest();
+    marcarMapaAtual(inBoss ? 'arena' : 'forest');
+    if (!Sv.loadGame()) return false;
+    // Estado local derivado das flags (Cap. 1): runas acesas conforme step e
+    // chave do enigma de volta ao chão se ainda não foi pega.
+    try {
+      var passo = (G && G.flags) ? (G.flags.step | 0) : 0;
+      for (var ri = 0; ri < runes.length; ri++) runes[ri].on = (runes[ri].i < passo) ? 1 : 0;
+      if (!inBoss && G && G.flags && (G.flags.runes_done === true || passo >= 3) && G.flags.has_key_c1 !== true) {
+        items.push({ x: 23 * T + 3, y: 12 * T + 3, t: 'k' });
+      }
+    } catch (e) {}
+    syncObjFromFlags();
+    espelharGlobals();
+    st = 'play';
+    return true;
+  } catch (e) { return false; }
+}
 function act(a) {
   if (Aud && typeof Aud.desbloquearAudio === 'function') { try { Aud.desbloquearAudio(); } catch (e) {} }
   if (menuOpen) {
@@ -221,13 +263,8 @@ function act(a) {
     return;
   }
   if (st === 'title') {
-    if (a === 'c' && Sv && typeof Sv.hasSave === 'function') {
-      try {
-        if (Sv.hasSave()) {
-          begin();
-          if (Sv.loadGame()) { syncObjFromFlags(); st = 'play'; showMsg('Progresso restaurado.'); return; }
-        }
-      } catch (e) {}
+    if (a === 'c') {
+      if (continuarSalvo()) { showMsg('Progresso restaurado.'); return; }
     }
     begin(); return;
   }
@@ -279,9 +316,6 @@ function update() {
   if (P.cd > 0) P.cd--;
   if (tt > 0) tt--;
   if (gcd > 0) gcd--;
-  if (Dlg && typeof Dlg.updateDialogue === 'function') { try { Dlg.updateDialogue(); } catch (e) {} }
-  else if (st === 'talk') { fallbackTC++; }
-  if (UI && typeof UI.updateToast === 'function') { try { UI.updateToast(st === 'talk'); } catch (e) {} }
   if (Wd && typeof Wd.updateWorldTransition === 'function') { try { Wd.updateWorldTransition(); } catch (e) {} }
   var dx = K.r - K.l, dy = K.d - K.u;
   if (dx || dy) {
@@ -565,7 +599,18 @@ var last = 0, acc = 0;
 function loop(t) {
   requestAnimationFrame(loop);
   acc += Math.min(100, t - last); last = t;
-  while (acc >= 16.67) { acc -= 16.67; fr++; if (st === 'play' && !menuOpen) update(); }
+  while (acc >= 16.67) {
+    acc -= 16.67; fr++;
+    // Typewriter e toast rodam no passo fixo SEMPRE (também em 'talk'/'over').
+    // Bug B1 (audit browser): antes estavam dentro de update(), que só roda em 'play',
+    // e o texto do diálogo nunca aparecia.
+    if (Dlg && typeof Dlg.updateDialogue === 'function') { try { Dlg.updateDialogue(); } catch (e) {} }
+    else if (st === 'talk') fallbackTC++;
+    var dlgAtivo = false;
+    try { dlgAtivo = (Dlg && typeof Dlg.isDialogueActive === 'function' && Dlg.isDialogueActive()) || st === 'talk'; } catch (e) { dlgAtivo = st === 'talk'; }
+    if (UI && typeof UI.updateToast === 'function') { try { UI.updateToast(dlgAtivo); } catch (e) {} }
+    if (st === 'play' && !menuOpen) update();
+  }
   render();
 }
 
@@ -600,20 +645,20 @@ addEventListener('keyup', function (e) { if (kk[e.code]) K[kk[e.code]] = 0; });
 addEventListener('blur', function () { K.u = K.d = K.l = K.r = 0; });
 
 // ---- wiring F0 ----
-try { if (UI && typeof UI.iniciarPausaAutomatica === 'function') UI.iniciarPausaAutomatica({}); } catch (e) {}
-try {
-  if (UI && typeof UI.definirAcaoReiniciarSala === 'function') UI.definirAcaoReiniciarSala(function () { retry(); });
-} catch (e) {}
-try { if (Sv && typeof Sv.connectSaveToWorld === 'function') Sv.connectSaveToWorld(); } catch (e) {}
+// Bug B2 (audit browser): o boot antigo conectava o autosave e chamava
+// gotoImmediate('forest') — gravar um save na PRIMEIRA visita (Continuar
+// fantasma) e deixar window.P "vazado". Agora o boot só registra os mapas e
+// devolve um estado neutro; o hook de save é conectado no 1º begin()/continue.
 try {
   if (Wd && typeof Wd.registerMap === 'function' && typeof Wd.createMapDef === 'function') {
-    P = P || { x: 3 * T, y: 16 * T, s: 10, d: 1, hp: 8, inv: 0, at: 0, dash: 0, cd: 0, kx: 0, ky: 0 };
+    P = criarJogador();
     forest();
     try { Wd.snapshotMvpMap('forest', { spawns: { entrada: { tileX: 3, tileY: 16 } }, bossArena: false }); } catch (e) {}
     arena();
     try { Wd.snapshotMvpMap('arena', { spawns: { entrada: { tileX: 7, tileY: 8 } }, bossArena: true }); } catch (e) {}
-    try { Wd.gotoImmediate('forest', 'entrada'); } catch (e) {}
-    P = null;
+    // Estado neutro pós-snapshot: sem jogador/mapa vivos até o título começar.
+    forest(); B = null; P = null; inBoss = false;
+    espelharGlobals();
   }
 } catch (e) {}
 try {

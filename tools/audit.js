@@ -175,15 +175,29 @@ try {
 t('A11 Game.flags com 13 chaves canônicas', flagOk, 'flags fora do contrato');
 // A12: sem <form> no jogo (só pointer events) — sobre código sem comentários
 t('A12 sem <form> no dist/src', !/<form[\s>]/i.test(distStripped + strippedJoined), '<form> proibido (só pointer events)');
-// A13: typewriter fora do render
-let twOk = true;
-for (const o of all) {
-  if (/main\.js$/.test(o.f)) {
-    const rend = o.code.slice(o.code.indexOf('function render'));
-    if (/fallbackTC\+\+|contadorTypewriter\s*\+=/.test(rend)) { twOk = false; break; }
+// A13: typewriter fora do render — extrai o corpo de render() por balanceamento
+// de chaves e proíbe incrementos de typewriter apenas ali.
+let twOk = true, twBad = '';
+{
+  const alvo = strippedAll.find(o => /main\.js$/.test(o.f));
+  if (alvo) {
+    const ini = alvo.code.indexOf('function render');
+    let fim = -1;
+    if (ini >= 0) {
+      const abre = alvo.code.indexOf('{', ini);
+      let prof = 0;
+      for (let i = abre; i < alvo.code.length; i++) {
+        if (alvo.code[i] === '{') prof++;
+        else if (alvo.code[i] === '}') { prof--; if (prof === 0) { fim = i; break; } }
+      }
+    }
+    const corpo = (ini >= 0 && fim > ini) ? alvo.code.slice(ini, fim) : '';
+    if (corpo && /fallbackTC\+\+|contadorTypewriter\s*\+=|contadorTypewriter\+\+/.test(corpo)) {
+      twOk = false; twBad = 'incremento de typewriter dentro de render()';
+    }
   }
 }
-t('A13 typewriter só no passo fixo (nada no render)', twOk, 'tc no render');
+t('A13 typewriter só no passo fixo (nada no render)', twOk, twBad);
 // A14: choices com 2–3 opções
 let chOk = true;
 try {

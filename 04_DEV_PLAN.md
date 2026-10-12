@@ -84,7 +84,7 @@ Ver specs. Interruptores, portas, plataformas, enigmas, **registros secretos (co
 | Texto fora de tom | Revisar tudo contra a Bíblia (humor da Lumi; momentos sem piada) |
 
 ## Definição de pronto (por fase)
-1. Requisitos de aceite cumpridos. 2. `sh tools/validate.sh` PASS (check + build + smoke 36/36 + audit severa 15/15). 3. Checklist QA da fase ok + `06_QA_AUDIT.md` com log do run. 4. Docs atualizados (`CLAUDE.md` seção "Estado atual", Bíblia se mudou algo). 5. Sem regressão em fases anteriores. 6. Git save com mensagem `F<n>: <o-que-mudou> (validate pass)`.
+1. Requisitos de aceite cumpridos. 2. `sh tools/validate.sh` PASS (check + build + smoke 36/36 + audit severa 15/15). 3. **Browser check MCP Chromium conforme §Browser de `06_QA_AUDIT.md`** (BCs aplicáveis PASS + evidências em `evidence/F<n>-browser/` + console limpo). 4. Checklist QA da fase ok + `06_QA_AUDIT.md` com log do run. 5. Docs atualizados (`CLAUDE.md` seção "Estado atual", Bíblia se mudou algo). 6. Sem regressão em fases anteriores. 7. Git save com mensagem `F<n>: <o-que-mudou> (validate+audit+browser pass)` — só depois dos 3 portões verdes; testes impossíveis ficam listados como pendentes, nunca aprovados.
 
 ## Registro de decisões
 | ID | Decisão | Data |
@@ -103,3 +103,5 @@ Ver specs. Interruptores, portas, plataformas, enigmas, **registros secretos (co
 | D-12 | `src/main.js` (IIFE) é o único que toca DOM/loop; módulos puros com fallback gracioso; typewriter fora do render | 2026-10-12 |
 | D-13 | F1-Content fiel ao MVP (mesmo LCG/posições/valores); novidades só aditivas, sem soft-lock, sem mudança de lore | 2026-10-12 |
 | D-14 | Portão `sh tools/validate.sh` + auditoria severa `tools/audit.js` (15 checks); commit só com VALIDATE PASS; git save imediato | 2026-10-12 |
+| D-15 | Auditoria de navegador via MCP Chromium (BC-01..BC-10 em `06_QA_AUDIT.md`) é obrigatória por fase para superfícies jogáveis; evidências em `evidence/F<n>-browser/`; commit de fase só após: testes automatizados (validate) + auditoria severa + browser check, os 3 verdes. Testes impossíveis na sessão ficam registrados como NÃO aprovados (nunca "ok por enquanto") | 2026-10-12 |
+| D-16 | Fixes de integração F0 achados pelo browser check: B1 typewriter/toast no passo fixo fora de `update()` (rodar também em `talk`); B2 boot não autossalva nem vaza `P` global; B3 `World.currentId` sincronizado nas transições do `main` + `continuarSalvo()` reconstrói a sala correta sem diálogo zumbi; B4 `syncObjFromFlags` não regride `obj` durante chefe | 2026-10-12 |
