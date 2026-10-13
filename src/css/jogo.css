@@ -10,7 +10,6 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:monos
 #c{image-rendering:pixelated;background:#000;display:block;aspect-ratio:3/2}
 #touch{position:absolute;inset:0;pointer-events:none;z-index:5}
 #touch>*{pointer-events:auto}
-#stage.ocultar-touch #touch{display:none}
 #dzone{position:absolute;display:flex;align-items:center;justify-content:center}
 #dbase{border:2px solid rgba(200,200,220,.55);border-radius:50%;background:rgba(40,40,60,.30);
   display:flex;align-items:center;justify-content:center}

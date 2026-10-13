@@ -419,13 +419,14 @@ try {
 } catch (e) { flgOk = false; flgBad = String(e.message); }
 t('A21 flags usadas registradas em FLAG_DEFAULTS (save não descarta)', flgOk, flgBad);
 
-// A22: overlay F2.5 — some fora do jogo/pausa; gamepad blindado; D-pad vetorial
+// A22: overlay F2.5 — sempre visível (D-23); gamepad blindado; D-pad vetorial;
+// navegação unificada de escolhas/menus/fim via K (D-23)
 let ovOk = true, ovBad = '';
 {
   const mainCode = all.find(o => /main\.js$/.test(o.f));
   const semComent = mainCode ? mainCode.code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/[^\n]*/g, '$1') : '';
   const checks = [
-    [/ocultar-touch/, 'overlay sem regra de visibilidade'],
+    [/getElementById\(['"]menubtn['"]\)/, 'botão de menu ausente'],
     [/getElementById\(['"]dzone['"]\)/, 'zona do direcional ausente'],
     [/pointermove/, 'sem arrasto no direcional'],
     [/0\.25/, 'sem zona morta'],
@@ -433,6 +434,8 @@ let ovOk = true, ovBad = '';
     [/typeof navigator/, 'gamepad sem guarda'],
     [/alternarMenu/, 'sem alternância de menu p/ botão'],
     [/requestFullscreen/, 'sem tentativa de fullscreen'],
+    [/penU.*penD|moverSelecaoEscolha/, 'sem navegação unificada de escolhas'],
+    [/endIdx/, 'sem menu de fim (endIdx)'],
   ];
   for (const [re, msg] of checks) {
     if (!re.test(semComent)) { ovOk = false; ovBad = msg; break; }

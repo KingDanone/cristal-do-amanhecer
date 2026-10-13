@@ -173,6 +173,10 @@ Roteiro (Chromium MCP; paisagem 844×390 + retrato 390×700):
 | BC-X6 | Gamepad: API existe, poll sem controle não move nem quebra | `dx=0`, sem throw (hardware real pendente) |
 | BC-X7 | Retrato: barra opaca embaixo, canvas no topo | `03-portrait.png` |
 | BC-X8 | Fontes curtas maiores sem quebrar wrap | objetivo 8px, título 10px; corpo do diálogo mantido 8px (caixa 216px/4 linhas) |
+| BC-X9 | Botões sempre visíveis (fim/diálogo) | `04-fim-menu.png`: menu + botões; sem `.ocultar-touch` |
+| BC-X10 | Fim é menu: D-pad navega, toque confirma | cima→"jogar de novo" (Brisamar); padrão→toque vai a Valdora (cap.2) |
+| BC-X11 | Escolha do Darius 100% no touch | D-pad baixa 0→1; botão A confirma; `kael_defiant=true` |
+| BC-X12 | Rótulos por dispositivo | toque=A/B/C; teclado=Z/X/C + dica WASD·JKL |
 
 Impossíveis (NÃO aprovados): gamepad com hardware real (DualShock/Xbox/genérico);
 fullscreen real em celular (headless não valida); gesto multitoque simultâneo

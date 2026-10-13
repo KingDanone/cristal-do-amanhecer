@@ -15,7 +15,6 @@ html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:monos
 #c{image-rendering:pixelated;background:#000;display:block;aspect-ratio:3/2}
 #touch{position:absolute;inset:0;pointer-events:none;z-index:5}
 #touch>*{pointer-events:auto}
-#stage.ocultar-touch #touch{display:none}
 #dzone{position:absolute;display:flex;align-items:center;justify-content:center}
 #dbase{border:2px solid rgba(200,200,220,.55);border-radius:50%;background:rgba(40,40,60,.30);
   display:flex;align-items:center;justify-content:center}
@@ -3401,6 +3400,12 @@ nomeJogador = lerNomeSalvo();
 function nomeNoTexto(t) { return String(t || '').split('Kael').join(nomeJogador); }
 function nomeDoFalante(n) { return n === 'Kael' ? nomeJogador : n; }
 function syncObj() { /* objetivo é derivado na hora (textoObjetivo); sem estado numérico */ }
+function ehToque() {
+  try {
+    if (('ontouchstart' in window) || (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)) return true;
+  } catch (e) {}
+  return false;
+}
 // ---- colisão ----
 function solidoEm(c) {
   if (Object.prototype.hasOwnProperty.call(solides, c)) return solides[c] ? 1 : 0;
@@ -3829,8 +3834,12 @@ function act(a) {
   }
   if (st === 'cena') { cenaT = 160; return; }
   if (st === 'end') {
+    // D-23: fim virou menu de 2 opções (padrão: Valdora) — toque/clique confirma
+    // a seleção em vez de sempre reiniciar; C continua atalho direto.
     if (a === 'c') { irParaValdora(); return; }
-    begin(); return;
+    if (endIdx === 1) irParaValdora();
+    else begin();
+    return;
   }
   if (st === 'talk') {
     advanceTalk();
@@ -4076,11 +4085,11 @@ function update() {
         } else {
           gravarFlag('boss1_defeated', true);
           try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena'); } catch (e) {}
-          if (!playDialogId('boss_defeated', function () { st = 'end'; })) {
+          if (!playDialogId('boss_defeated', function () { st = 'end'; endIdx = 1; })) {
             say([
               ['Narrador', 'O Guardião das Raízes desmorona. Entre as raízes surge uma inscrição antiga.'],
               ['Inscrição', 'Quando a primeira estrela cair, aquele que carrega a lembrança abrirá o caminho.']
-            ], function () { st = 'end'; });
+            ], function () { st = 'end'; endIdx = 1; });
           }
         }
       }
@@ -4298,15 +4307,9 @@ function desenharObjetos() {
 }
 function render() {
   x.font = 'bold 8px monospace'; x.textBaseline = 'alphabetic';
-  // F2.5: overlay de toque só no jogo e na pausa (nunca em diálogo/título).
-  try {
-    var stage = document.getElementById('stage');
-    if (stage) {
-      var mostra = (st === 'play' || menuOpen);
-      if (mostra) stage.classList.remove('ocultar-touch');
-      else stage.classList.add('ocultar-touch');
-    }
-  } catch (e) {}
+  // D-23: overlay SEMPRE visível (pedido de teste): esconder os botões no fim
+  // prendia o jogador no repeat (sem C não há como ir a Valdora) e o D-pad
+  // parado impedia navegar escolhas/menus no touch. Sem .ocultar-touch.
   F('#000', 0, 0, W, H);
   if (st === 'title') {
     for (var i = 0; i < 40; i++) F('#fff', (i * 53) % W, (i * 37) % H, 1, 1);
@@ -4321,10 +4324,12 @@ function render() {
     var hasSave = false;
     try { hasSave = Sv && typeof Sv.hasSave === 'function' && Sv.hasSave(); } catch (e) {}
     if (!titleNome) {
+      var ehT = false;
+      try { ehT = ehToque(); } catch (e) {}
       if (fr % 60 < 40) {
-        txt('A: Novo jogo', W / 2, 110, '#fff', 'center');
-        txt(hasSave ? 'C: Continuar' : 'Toque para começar', W / 2, 122, hasSave ? '#7f7' : '#fff', 'center');
-        txt('B: mudar nome', W / 2, 134, '#888', 'center');
+        txt(ehT ? 'A: Novo jogo' : 'Z: Novo jogo', W / 2, 110, '#fff', 'center');
+        txt(hasSave ? (ehT ? 'C: Continuar' : 'C: Continuar') : 'Toque para começar', W / 2, 122, hasSave ? '#7f7' : '#fff', 'center');
+        txt(ehT ? 'B: mudar nome' : 'X: mudar nome', W / 2, 134, '#888', 'center');
       }
     } else {
       txt('B: cancelar   A: confirmar', W / 2, 106, '#888', 'center');
@@ -4442,10 +4447,14 @@ function render() {
     for (var ti = 0; ti < 30; ti++) F('#fff', (ti * 53) % W, (ti * 37) % H, 1, 1);
     txt('FIM DO CAPÍTULO 1', W / 2, 50, '#ffd866', 'center');
     txt('A Cidade de Valdora o aguarda', W / 2, 70, '#9cf', 'center');
-    if (fr % 60 < 40) {
-      txt('A: jogar de novo', W / 2, 108, '#fff', 'center');
-      txt('C: seguir para Valdora', W / 2, 120, '#7f7', 'center');
-    }
+    var toque = false;
+    try { toque = ehToque(); } catch (e) {}
+    // D-23: rótulos conforme o dispositivo (no toque valem os botões da tela).
+    var rotA = toque ? 'A: jogar de novo' : 'Z: jogar de novo';
+    var rotC = toque ? 'C: seguir para Valdora' : 'C: seguir para Valdora';
+    txt((endIdx === 0 ? '▶ ' : '  ') + rotA, W / 2, 106, '#fff', 'center');
+    txt((endIdx === 1 ? '▶ ' : '  ') + rotC, W / 2, 120, '#7f7', 'center');
+    if (fr % 60 < 40) txt(toque ? 'Toque p/ confirmar' : 'Cima/baixo escolhe · Z confirma', W / 2, 136, '#888', 'center');
   }
   var fadeA = 0;
   try {
@@ -4454,7 +4463,7 @@ function render() {
   } catch (e) {}
   if (fadeA > 0) { x.fillStyle = 'rgba(0,0,0,' + Math.max(0, Math.min(1, fadeA)).toFixed(2) + ')'; x.fillRect(0, 0, W, H); }
 }
-var last = 0, acc = 0;
+var last = 0, acc = 0, penU = 0, penD = 0, endIdx = 1;
 function loop(t) {
   requestAnimationFrame(loop);
   acc += Math.min(100, t - last); last = t;
@@ -4467,6 +4476,24 @@ function loop(t) {
     try { dlgAtivo = (Dlg && typeof Dlg.isDialogueActive === 'function' && Dlg.isDialogueActive()) || st === 'talk'; } catch (e) { dlgAtivo = st === 'talk'; }
     if (UI && typeof UI.updateToast === 'function') { try { UI.updateToast(dlgAtivo); } catch (e) {} }
     if (UI && typeof UI.updateFade === 'function') { try { UI.updateFade(); } catch (e) {} }
+    // D-23: navegação cima/baixo unificada (teclado + touch + gamepad escrevem K;
+    // a borda decide). Cobre escolhas de diálogo, menu de pausa e menu do fim.
+    try {
+      var emEscolha = st === 'talk' && Dlg && Dlg.estaEmEscolha && Dlg.estaEmEscolha();
+      if (emEscolha || menuOpen || st === 'end') {
+        if (K.u && !penU) {
+          if (st === 'end') endIdx = 0;
+          else if (menuOpen) menuIdx = (menuIdx + 2) % 3;
+          else Dlg.moverSelecaoEscolha(-1);
+        }
+        if (K.d && !penD) {
+          if (st === 'end') endIdx = 1;
+          else if (menuOpen) menuIdx = (menuIdx + 1) % 3;
+          else Dlg.moverSelecaoEscolha(1);
+        }
+        penU = K.u; penD = K.d;
+      } else { penU = 0; penD = 0; }
+    } catch (e) {}
     if (st === 'cena') {
       cenaT++;
       if (cenaT >= 160) { st = 'play'; var cb = cenaDepois; cenaDepois = null; if (cb) cb(); }
@@ -4601,14 +4628,12 @@ addEventListener('keydown', function (e) {
     if (ka[e.code] && !e.repeat) { act(ka[e.code]); e.preventDefault(); }
     return;
   }
-  if (menuOpen && (e.code === 'ArrowUp' || e.code === 'KeyW')) { menuIdx = (menuIdx + 2) % 3; e.preventDefault(); return; }
-  if (menuOpen && (e.code === 'ArrowDown' || e.code === 'KeyS')) { menuIdx = (menuIdx + 1) % 3; e.preventDefault(); return; }
+  // (D-23: navegação de menu/escolha/fim sai do passo fixo via K; sem duplicar aqui.)
   if ((e.code === 'KeyP' || e.code === 'Escape') && (st === 'play' || menuOpen)) {
     alternarMenu();
     e.preventDefault(); return;
   }
-  if (st === 'talk' && (e.code === 'ArrowUp' || e.code === 'KeyW')) { if (!moverSelecaoDialogo(-1)) {} e.preventDefault(); return; }
-  if (st === 'talk' && (e.code === 'ArrowDown' || e.code === 'KeyS')) { if (!moverSelecaoDialogo(1)) {} e.preventDefault(); return; }
+  // (D-23: idem para escolhas de diálogo.)
   if (kk[e.code]) { K[kk[e.code]] = 1; if (st !== 'talk') e.preventDefault(); }
   if (ka[e.code] && !e.repeat) { act(ka[e.code]); e.preventDefault(); }
 });
