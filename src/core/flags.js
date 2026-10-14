@@ -59,7 +59,26 @@ Game.FLAG_DEFAULTS = {
   darius_prov: false,
   proposta_vista: false,
   chegou_valdora: false,
-  esconderijo: false
+  esconderijo: false,
+  // D-24: flags do Cap. 3 (Ruínas do Norte). Interruptores/painéis abrem
+  // portões de forma idempotente (reaplicados do flag ao carregar o mapa);
+  // registros são colecionáveis (cada id impede recoleta; o contador canônico
+  // é secret_records, requisito do Final 3 junto com cat_found).
+  chegou_montanha: false,
+  f3_enigma: false,
+  sw_ruin_a: false,
+  sw_ruin_b: false,
+  sw_ruin_c: false,
+  sw_ruin_mag: false,
+  registro_f3_1: false,
+  registro_f3_2: false,
+  registro_f3_3: false,
+  registro_f3_4: false,
+  registro_f3_5: false,
+  boss3_defeated: false,
+  gravacao_vista: false,
+  fragmentos_roubados: false,
+  esconderijo_norte: false
 };
 
 // Replica os defaults em getDefaultFlags (única fonte = FLAG_DEFAULTS).

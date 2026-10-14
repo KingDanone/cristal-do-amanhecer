@@ -110,6 +110,18 @@ Arena 15×10, contato a <22 px = 1 dano. Ciclo (frames a 60 Hz):
 - **Gancho:** Darius de armadura negra toma os fragmentos
   ("Desculpa, Kael. Mas alguém precisa fazer o que deve ser feito.").
 - **Aceite:** contador de registros no menu; calabouço sem soft-lock.
+- **STATUS 2026-10-14: ENTREGUE E VERIFICADO** (validate + audit 23/23 + smoke 45/45
+  + browser BC-F3-01..BC-F3-18, evidências em `evidence/f3-browser/01..18`):
+  montanha (gelo escorregadio, acampamento, registro 1) → saguão (enigma ordenado
+  sol→estrela→lua, interruptores A/B, ponte sobre o abismo, registro 2) → ala da
+  expedição (corredor de gelo, diários 1–3 do pai, passagem secreta c/ registro 4,
+  interruptor isolado só p/ magia evoluída, registro 5 no cofre) → Sentinela de Ferro
+  (32 HP, investida que trava na parede, tel 40 f) → Fragmento Azul (magia perfura
+  + cruza abismo + ativa interruptor à distância) + gravação do pai (dilema moral,
+  3ª via em aberto) → Darius de armadura negra toma os fragmentos → volta a Valdora
+  (objetivo "Aguarde o Capítulo 4"). Contador "Registros antigos: n/5" no menu de
+  pausa; portões por flag reaplicados do save (sem soft-lock); Continue restaura
+  mapa/flags/posição/HP. Sem regressão (F0–F2 intactos).
 
 ## Cap. 4 — O Amigo que Escolheu as Sombras (esqueleto, ver F4)
 

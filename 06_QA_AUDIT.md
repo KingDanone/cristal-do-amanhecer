@@ -14,14 +14,16 @@ sh tools/validate.sh                                         # PORTÃO ÚNICO: c
 ```
 Portão antes de cada commit: `sh tools/validate.sh`. **Commit só com VALIDATE PASS** (D-14).
 
-## Status atual (2026-10-14, F2.5 legibilidade — branch `exp/f2.5-apresentacao`)
+## Status atual (2026-10-14, F3 Ruínas do Norte — `main`)
 - `node --check` em todos os `.js` (src + tools): **PASS**.
-- `tools/build.js --check-size`: **PASS** (179.8 KB / 250 KB, 17 módulos + shell).
-- `tools/smoke.js`: **PASS 40/40**.
-- `tools/audit.js` (severa): **PASS 22/22**.
-- Browser MCP Chromium (paisagem 844×390): console **0 mensagens**; evidência
-  `evidence/exp-f2.5/05-toast-faixa.png` (faixa do objetivo + toast de 2 linhas).
-- Próxima fase: F3 (Ruínas do Norte). Branch de trabalho: `exp/f2.5-apresentacao`.
+- `tools/build.js --check-size`: **PASS** (219.1 KB / 250 KB, 22 módulos + shell).
+- `tools/smoke.js`: **PASS 45/45**.
+- `tools/audit.js` (severa): **PASS 23/23** (novo A23: mecanismos F3).
+- Browser MCP Chromium: console **0 mensagens** em todo o run; 18 evidências em
+  `evidence/f3-browser/01..18` (título, arrival, pausa 1/5 e 5/5, saguão, porta do
+  enigma, ruinas2, diários 1/3, porta do chefe, arena3 intro, telegraph, vitória,
+  gravação, Darius negro, retorno, objetivo Cap 4, cofre da magia).
+- Próxima fase: F4 (Cap. 4 + Cap. 5).
 
 ## Checklist por fase
 Legenda: ✅ coberto por teste automatizado · 🔲 manual · — não se aplica.
@@ -192,9 +194,57 @@ Verificado por diff + `validate.sh` + screenshot no navegador.
 | TX-07 | Portão de qualidade intacto | build 179.8 KB; smoke 40/40; audit 22/22; console 0 msgs |
 
 Observações (sem bloqueio, registradas p/ o próximo chat):
-- `var wChefe` + `void wChefe;` ficou como código morto no bloco do chefe — inofensivo, limpar quando tocar ali.
+- ~~`var wChefe` + `void wChefe;` ficou como código morto no bloco do chefe — inofensivo, limpar quando tocar ali.~~ **QUITADA em 2026-10-14 (F3, `src/main.js`).**
 - Toast e objetivo podem sobrepor as faixas se o objetivo quebrar em 2 linhas e um toast aparecer junto (faixa do objetivo vai até y~39, toast começa em y28). Raro e não testado visualmente; aceitar ou ajustar numa passada futura.
 - TX-05 sem evidência visual nesta rodada (só diff + testes automatizados).
+
+### Auditoria de navegador F3 (BC-F3-01..BC-F3-18) — 2026-10-14, PASS
+Roteiro no bundle F3 (Chromium MCP, teclado sintético + cirurgia de estado via
+`Game.setFlag`/`P`/`B`/`E`/`S` — mesmos recursos dos ciclos F1/F2; rota orgânica
+humana 100 % pendente, ver impossíveis). Setup: Cap.1 via portão c/ chave por flag,
+Guardião c/ `hp=1` + golpe real, fim→C→Valdora, flags F2 por console, nicho norte.
+
+| # | Item | Evidência/resultado |
+|---|---|---|
+| BC-F3-01 | Boot limpo, console 0 msgs | `01-titulo.png`; `temSave=false`, `title_theme` |
+| BC-F3-02 | Nicho norte → montanha (spawn/tema/chapter/arrival) | `02-montanha-arrival.png`; 20×13, `montanha_theme`, chapter=3, `montanha_arrival` |
+| BC-F3-03 | Registro 1: coleta + toast (1/5) | `registro_f3_1`, `secret_records=1`, toast exato |
+| BC-F3-04 | Contador "Registros antigos: n/5" no menu de pausa | `03-pausa-registros.png` |
+| BC-F3-05 | Porta norte → saguão ruinas1 | `04-saguao.png`; spawn `entrada`, `ruin_theme` |
+| BC-F3-06 | Enigma: 3 golpes reais de espada na ordem → `f3_enigma` + porta `dd` | `05-enigma-porta-aberta.png`; toasts (1/3)(2/3)+abertura |
+| BC-F3-07 | Interruptor A (espada) → ponte `VVV` | `sw_ruin_a`, toast "Clank!" |
+| BC-F3-08 | Interruptor B + registro 2 no alcove | `sw_ruin_b`, `secret_records=2` |
+| BC-F3-09 | Saída oeste → ala ruinas2 | `06-ruinas2.png`; spawn `entrada_leste` |
+| BC-F3-10 | Gelo `I` desliza sem input | +144 px em 60 frames após soltar a tecla (1,5 px/passo) |
+| BC-F3-11 | Diários 1–3 do pai (botão A, textos canônicos) | `07-diario1.png`, `08-diario3.png` |
+| BC-F3-12 | Interruptor C → porta do chefe `dd` | `09-porta-chefe-aberta.png`; `sw_ruin_c` |
+| BC-F3-13 | Arena3: Sentinela 32 HP, ciclo walk→tel(**40 f**)→carga→rest | `10-arena3-intro.png` (barra nomeada), `11-sentinela-telegraph.png` |
+| BC-F3-14 | Morte → vitória → gravação → Darius negro → Valdora | `12-vitoria3.png`, `13-gravacao-pai.png` (`gravacao_vista`), `14-darius-armadura-negra.png` (`fragmentos_roubados`), `15-retorno-valdora.png`, `16-objetivo-cap4.png` ("Aguarde o Capítulo 4"); hpMax 12 |
+| BC-F3-15 | Magia evoluída: perfura slime (3→2) e segue; cruza abismo e ativa interruptor isolado → cofre `d` | `17-cofre-aberto-magia.png`; `sw_ruin_mag` |
+| BC-F3-16 | Registros 3 (chão), 4 (passagem secreta c/ Fragmento Verde) e 5 (cofre); pausa mostra 5/5 | `18-pausa-5de5.png`; `secret_records=5` |
+| BC-F3-17 | Reload + Continuar em ruinas2: mapa/pos/HP/flags/portões (`dd`+`d`), sem recoletas (5 fica 5) | payload `mapa:'ruinas2'`, chapter 3 |
+| BC-F3-18 | Console 0 msgs no run inteiro; retry ("Reiniciar sala"→`entrada_leste`); revisita arena3 (sem chefe, saída sul→ruinas2, sem soft-lock) | list_console_messages vazio |
+
+Lições de harness F3 (sem impacto no jogo): (1) skip via `Dlg.advanceDialogue()` direto
+não restaura `st` (interno da IIFE) — sempre seguir de um Z via CDP que passe por
+`act()`/`advanceTalk()`; (2) teleporte saída→saída nunca arma `saidaArmada` (by design
+anti-retrigger) — estagiar por tile neutro; (3) toast dura 150 frames: ler no mesmo
+bloco do golpe; (4) diários repetíveis reabrem a cada A — afastar P antes de avançar;
+(5) `await rAF` in-page permite waits determinísticos (gelo, telegraph, transições).
+Falso-alarme documentado como NÃO-bug: projétil "morreu no 1º inimigo" era ativação
+correta do interruptor isolado (`s.l=0` proposital) após perfurar; "saída oeste não
+dispara" era `st='talk'` (enterDialog pendente) + `saidaArmada` desarmado por teleporte.
+
+### Testes IMPOSSÍVEIS nesta sessão — registrados como NÃO aprovados (pendentes)
+1–8. (herdados de F0–F2.5: toque real, `pointercancel` real, áudio audível, iOS Safari/
+Android reais, 60 fps em celular médio, `visibilitychange` real, rota 100 % orgânica
+no navegador, timbre musical, playthrough cronometrado — ver § acima.)
+9. (F3, novo) Rota orgânica completa do calabouço sem cirurgia de estado (enigmas,
+chefe e cadeia jogados de ponta a ponta por humano) — fluxo provado por fragmentos
+com estados, não em tempo real; chefe morto com `hp=1/2` + golpes reais.
+10. (F3, novo) Dificuldade real do Sentinela e do gelo com polegares (timing de
+investida, punição do stun) — só medicição de frames + screenshots; gamepad com
+hardware real continua pendente.
 
 Impossíveis (NÃO aprovados): gamepad com hardware real (DualShock/Xbox/genérico);
 fullscreen real em celular (headless não valida); gesto multitoque simultâneo
@@ -223,3 +273,5 @@ Evidências F2.5 (branch): `evidence/exp-f2.5/01-landscape-play.png`,
 | 2026-10-12 | Fixes + rodada 2 (BC-F2-01..15, evidências 01..06) | **PASS tudo; console 0 msgs** |
 | 2026-10-12 | Browser MCP Chromium F2.5 (branch `exp/f2.5-apresentacao`, BC-X1..X8) | **PASS tudo; console 0 msgs** |
 | 2026-10-14 | Pass de legibilidade F2.5 (outro agente): contorno 8-dir + faixas + 9px | Diff confere c/ relatório; `sh tools/validate.sh` PASS (179.8 KB, 40/40, 22/22); evidência `evidence/exp-f2.5/05-toast-faixa.png`; console 0 msgs |
+| 2026-10-14 | `sh tools/validate.sh` (F3: check + build 219.1 KB/22 módulos + smoke 45/45 + audit severa 23/23 c/ A23 novo) | VALIDATE PASS |
+| 2026-10-14 | Browser MCP Chromium F3 (BC-F3-01..BC-F3-18, evidências 01..18) | **PASS tudo; console 0 msgs** |

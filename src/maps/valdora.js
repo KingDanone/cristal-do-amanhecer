@@ -41,12 +41,15 @@ const MAP_VALDORA = {
     templo: { tx: 11, ty: 5 },
     grade: { tx: 17, ty: 12 },
     praca: { tx: 10, ty: 8 },
+    montanha: { tx: 2, ty: 3 },
   },
   exits: [
     // Porta do templo → arena do Cavaleiro Corrompido (exige a pista).
     { tx: 11, ty: 2, w: 2, h: 1, to: "arena2", spawn: "entrada", req: "fragmento_pista", reqMsg: "O templo está trancado. A guarda não deixa passar.", transition: "fade", enterDialog: "chefe2_intro" },
     // Grade do esgoto → esgotos (exige completar a missão do gato).
     { tx: 19, ty: 12, w: 1, h: 1, to: "esgoto", spawn: "entrada", req: "cat_found", reqMsg: "A grade está presa. Alguém da praça pode saber de algo.", transition: "fade" },
+    // F3: nicho noroeste → passagem para a montanha (abre após o Cap. 2).
+    { tx: 1, ty: 1, w: 2, h: 2, to: "montanha", spawn: "de_valdora", req: "proposta_vista", reqMsg: "A passagem norte segue bloqueada pela guarda. Por enquanto.", transition: "fade" },
   ],
   npcs: [
     { id: "menina", name: "Menina", tx: 13, ty: 7, face: "left", dialogs: { first: "menina_inicio", repeat: "menina_obrigada" } },

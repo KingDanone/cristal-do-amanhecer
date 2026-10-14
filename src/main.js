@@ -25,9 +25,12 @@ var Wd = (typeof World !== 'undefined') ? World : null;
 var Sv = (typeof SaveSystem !== 'undefined') ? SaveSystem : null;
 var DIALOGS = (typeof DIALOGS_F1 !== 'undefined') ? DIALOGS_F1 : ((typeof globalThis !== 'undefined' && globalThis.DIALOGS_F1) || null);
 var DIALOGS2 = (typeof DIALOGS_F2 !== 'undefined') ? DIALOGS_F2 : ((typeof globalThis !== 'undefined' && globalThis.DIALOGS_F2) || null);
+var DIALOGS3 = (typeof DIALOGS_F3 !== 'undefined') ? DIALOGS_F3 : ((typeof globalThis !== 'undefined' && globalThis.DIALOGS_F3) || null);
+var Mec = (typeof globalThis !== 'undefined' && globalThis.Cristal && globalThis.Cristal.Mecanismos) || null;
 function buscarDialogo(id) {
   if (DIALOGS && DIALOGS[id]) return DIALOGS[id];
   if (DIALOGS2 && DIALOGS2[id]) return DIALOGS2[id];
+  if (DIALOGS3 && DIALOGS3[id]) return DIALOGS3[id];
   return null;
 }
 
@@ -39,13 +42,16 @@ var mapaId = '', mapaTileset = 'floresta', solides = {}, obstaculos = [];
 var npcs = [], objetos = [], saidas = [], raizesDeco = [];
 var pedraAzul = null, bush = null, saidaArmada = false;
 var cenaT = 0, cenaDepois = null;
+var interruptores = [], paineis = [], painelProg = 0, flashT = 0, deslize = 0, shotSeq = 0;
 var titleNome = false, nomeJogador = 'Kael', nomeChars = [], nomeCursor = 0;
 var K = { u: 0, d: 0, l: 0, r: 0 };
 var LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 function espelharGlobals() {
-  try { globalThis.M = M; globalThis.MW = MW; globalThis.MH = MH; globalThis.P = P; globalThis.inBoss = inBoss; globalThis.B = B; } catch (e) {}
-  try { window.M = M; window.MW = MW; window.MH = MH; window.P = P; window.inBoss = inBoss; window.B = B; } catch (e) {}
+  // Espelhos p/ a camada de navegador (D-16/B3): leitura de estado no QA.
+  // E (inimigos) e S (projéteis) entram aqui p/ provar a magia perfurante (F3).
+  try { globalThis.M = M; globalThis.MW = MW; globalThis.MH = MH; globalThis.P = P; globalThis.inBoss = inBoss; globalThis.B = B; globalThis.E = E; globalThis.S = S; } catch (e) {}
+  try { window.M = M; window.MW = MW; window.MH = MH; window.P = P; window.inBoss = inBoss; window.B = B; window.E = E; window.S = S; } catch (e) {}
 }
 function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
 function gestoAudio() {
@@ -204,15 +210,29 @@ function defMapa(id) {
     if (id === 'ruin_entry' && typeof MAP_RUIN_ENTRY !== 'undefined') return MAP_RUIN_ENTRY;
     if (id === 'valdora' && typeof MAP_VALDORA !== 'undefined') return MAP_VALDORA;
     if (id === 'esgoto' && typeof MAP_ESGOTO !== 'undefined') return MAP_ESGOTO;
+    if (id === 'montanha' && typeof MAP_MONTANHA !== 'undefined') return MAP_MONTANHA;
+    if (id === 'ruinas1' && typeof MAP_RUINAS1 !== 'undefined') return MAP_RUINAS1;
+    if (id === 'ruinas2' && typeof MAP_RUINAS2 !== 'undefined') return MAP_RUINAS2;
     if (typeof globalThis !== 'undefined') {
       if (id === 'brisamar' && globalThis.MAP_BRISAMAR) return globalThis.MAP_BRISAMAR;
       if (id === 'forest' && globalThis.MAP_FOREST) return globalThis.MAP_FOREST;
       if (id === 'ruin_entry' && globalThis.MAP_RUIN_ENTRY) return globalThis.MAP_RUIN_ENTRY;
       if (id === 'valdora' && globalThis.MAP_VALDORA) return globalThis.MAP_VALDORA;
       if (id === 'esgoto' && globalThis.MAP_ESGOTO) return globalThis.MAP_ESGOTO;
+      if (id === 'montanha' && globalThis.MAP_MONTANHA) return globalThis.MAP_MONTANHA;
+      if (id === 'ruinas1' && globalThis.MAP_RUINAS1) return globalThis.MAP_RUINAS1;
+      if (id === 'ruinas2' && globalThis.MAP_RUINAS2) return globalThis.MAP_RUINAS2;
     }
   } catch (e) {}
   return null;
+}
+function temaDoMapa(id) {
+  if (id === 'arena' || id === 'arena2' || id === 'arena3') return 'boss_theme';
+  if (id === 'ruin_entry' || id === 'ruinas1' || id === 'ruinas2') return 'ruin_theme';
+  if (id === 'montanha') return 'montanha_theme';
+  if (id === 'brisamar') return 'brisamar_theme';
+  if (id === 'valdora') return 'valdora_theme';
+  return 'forest_theme';
 }
 function statsInimigo(kind, def) {
   if (def && def.enemyDefs && def.enemyDefs[kind]) return def.enemyDefs[kind];
@@ -229,12 +249,24 @@ function marcarMapaAtual(id) {
 function montarArena(qual) {
   inBoss = true; MW = 15; MH = 10; M = [];
   for (var j = 0; j < MH; j++) { M[j] = []; for (var i = 0; i < MW; i++) M[j][i] = (i < 1 || j < 1 || i > MW - 2 || j > MH - 2) ? '#' : '.'; }
-  mapaTileset = qual === 'arena2' ? 'arena2' : 'arena'; solides = { '#': true, '.': false };
+  mapaTileset = qual === 'arena3' ? 'arena3' : qual === 'arena2' ? 'arena2' : 'arena'; solides = { '#': true, '.': false };
   obstaculos = []; npcs = []; objetos = []; saidas = []; raizesDeco = []; runes = [];
+  interruptores = []; paineis = []; painelProg = 0; deslize = 0;
   pedraAzul = null; bush = null;
   E = []; items = []; S = []; RT = [];
   P.x = 7 * T; P.y = 8 * T; P.hp = P.hpMax || 8; P.inv = 60; P.kx = 0; P.ky = 0;
-  if (qual === 'arena2') {
+  if (qual === 'arena3') {
+    // D-24: Sentinela de Ferro — investida que trava na parede (stun = punição).
+    if (!lerFlag('boss3_defeated')) {
+      B = { kind: 'sentinela', nome: 'Sentinela de Ferro', x: 106, y: 28, s: 28, hp: 32, hpMax: 32, m: 'walk', t: 60, fl: 0, dc: 0, end: 0, sw: -1, vx: 0, vy: 0 };
+    } else {
+      B = null;
+      // Revisita pós-chefe: passagem sul aberta (o cenário pós-vitória, na
+      // entrada com ganchos, é reaberto por carregarMapa se ainda pendente).
+      M[9][7] = '.'; M[9][8] = '.';
+      saidas.push({ tx: 7, ty: 8, w: 2, h: 2, to: 'ruinas2', spawn: 'saida_arena', req: null, reqMsg: null, leaveDialog: null, enterDialog: null });
+    }
+  } else if (qual === 'arena2') {
     // D-20: Cavaleiro Corrompido — investidas rápidas, rajada em cruz na fase 2.
     B = { kind: 'cavaleiro', nome: 'Cavaleiro Corrompido', x: 106, y: 28, s: 28, hp: 28, hpMax: 28, m: 'walk', t: 70, fl: 0, dc: 0, end: 0, sw: -1, vx: 0, vy: 0 };
   } else {
@@ -247,12 +279,16 @@ function carregarMapa(id, spawnNome, opts) {
   var op = opts || {};
   var posicionar = op.posicionar !== false, ganchos = op.ganchos !== false;
   mapaId = id;
-  if (id === 'arena' || id === 'arena2') {
+  if (id === 'arena' || id === 'arena2' || id === 'arena3') {
     if (!P) P = criarJogador();
     montarArena(id);
     saidaArmada = false;
     marcarMapaAtual(id);
     if (ganchos) { try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange(id); } catch (e) {} }
+    // Cena pós-Sentinela pendente (morte logo após o chefe, reload no meio):
+    if (ganchos && id === 'arena3' && lerFlag('boss3_defeated') && !lerFlag('fragmentos_roubados')) {
+      try { cenaPosBoss3(); } catch (e) {}
+    }
     espelharGlobals();
     return true;
   }
@@ -260,13 +296,16 @@ function carregarMapa(id, spawnNome, opts) {
   if (!def) return false;
   inBoss = false;
   MW = def.w; MH = def.h;
-  M = def.tiles.slice();
+  M = def.tiles.map(function (linha) { return linha.split(''); });
+  // D-24: portões por flag são reaplicados do save (idempotente).
+  try { if (Mec && typeof Mec.aplicarPortoes === 'function') Mec.aplicarPortoes(def, M, (G && G.flags) ? G.flags : {}); } catch (e) {}
   mapaTileset = id;
   solides = {};
   if (def.legend) for (var c in def.legend) {
     if (Object.prototype.hasOwnProperty.call(def.legend, c)) solides[c] = !!def.legend[c].solid;
   }
   obstaculos = []; npcs = []; objetos = []; saidas = []; raizesDeco = []; runes = [];
+  interruptores = []; paineis = []; painelProg = 0; deslize = 0;
   pedraAzul = null; bush = null;
   E = []; items = []; S = []; RT = []; B = null;
   if (!P) P = criarJogador();
@@ -299,8 +338,29 @@ function carregarMapa(id, spawnNome, opts) {
       obstaculos.push({ x: bush.x, y: bush.y, w: T, h: T });
       continue;
     }
+    // F3: interruptores/painéis ficam fora de `objetos` — o botão A não os
+    // mira como diálogo (a espada/magia os ativa, como as runas do Cap. 1).
+    if (od.type === 'interruptor') {
+      var itr = { tipo: 'interruptor', flag: od.flag, x: od.tx * T, y: od.ty * T, w: T, h: T, on: lerFlag(od.flag) ? 1 : 0, sw: -1, nome: od.name || 'Interruptor' };
+      interruptores.push(itr);
+      obstaculos.push({ x: itr.x, y: itr.y, w: T, h: T });
+      continue;
+    }
+    if (od.type === 'painel') {
+      var pn = { tipo: 'painel', simbolo: od.simbolo || 'sol', ordem: od.ordem | 0, x: od.tx * T, y: od.ty * T, w: T, h: T, on: 0, sw: -1, nome: od.name || 'Painel' };
+      paineis.push(pn);
+      obstaculos.push({ x: pn.x, y: pn.y, w: T, h: T });
+      continue;
+    }
+    if (od.type === 'registro') {
+      // Coletável com flag própria: já coletado não reaparece (save idempotente).
+      if (!lerFlag(od.id)) items.push({ x: od.tx * T + 4, y: od.ty * T + 4, t: 'r', rid: od.id });
+      continue;
+    }
     var ob2 = { tipo: od.type, x: od.tx * T, y: od.ty * T, w: T, h: T, dialog: od.dialog || null, nome: od.name || od.kind || od.type, reqFlag: od.reqFlag || null, reqDialog: od.reqDialog || null };
-    if (od.type === 'sign' || od.type === 'dummy' || od.type === 'bau' || od.type === 'passagem') obstaculos.push({ x: ob2.x, y: ob2.y, w: T, h: T });
+    if (od.flagPass) ob2.flagPass = od.flagPass;
+    if (od.recordId) ob2.recordId = od.recordId;
+    if (od.type === 'sign' || od.type === 'dummy' || od.type === 'bau' || od.type === 'passagem' || od.type === 'diario') obstaculos.push({ x: ob2.x, y: ob2.y, w: T, h: T });
     objetos.push(ob2);
   }
   if (def.sign) {
@@ -334,9 +394,17 @@ function carregarMapa(id, spawnNome, opts) {
   }
   // spawn
   if (posicionar && def.spawns) {
-    var sp = def.spawns[spawnNome] || def.spawns.home || def.spawns.fromBrisamar || def.spawns.entry;
+    var sp = def.spawns[spawnNome] || def.spawns.home || def.spawns.fromBrisamar || def.spawns.entry
+      || def.spawns.entrada || def.spawns.entrada_sul || def.spawns.de_valdora || def.spawns.entrada_leste;
     if (sp) { P.x = sp.tx * T; P.y = sp.ty * T; }
   }
+  // Enigma do saguão já resolvido: painéis acesos refletem o save.
+  if (paineis.length && lerFlag('f3_enigma')) {
+    painelProg = paineis.length;
+    for (var pz = 0; pz < paineis.length; pz++) paineis[pz].on = 1;
+  }
+  // F3: chegar à montanha marca o Cap. 3 (mesmo papel de irParaValdora no F2).
+  if (id === 'montanha') { try { if (G && typeof G.setFlag === 'function') G.setFlag('chapter', 3); } catch (e) {} }
   saidaArmada = false;
   try { if (UI && typeof UI.limparToasts === 'function') UI.limparToasts(); } catch (e) {}
   mt = ''; tt = 0;
@@ -405,11 +473,11 @@ function continuarSalvo() {
     if (!Sv.loadGame()) return false;
     var id = 'forest';
     try {
-      var conhecidos = ['arena', 'arena2', 'brisamar', 'ruin_entry', 'forest', 'valdora', 'esgoto'];
+      var conhecidos = ['arena', 'arena2', 'arena3', 'brisamar', 'ruin_entry', 'forest', 'valdora', 'esgoto', 'montanha', 'ruinas1', 'ruinas2'];
       if (typeof World !== 'undefined' && World && World.maps && World.maps[desc.mapa]) id = desc.mapa;
       else if (conhecidos.indexOf(desc.mapa) !== -1) id = desc.mapa;
     } catch (e) {}
-    if (id === 'arena' || id === 'arena2') {
+    if (id === 'arena' || id === 'arena2' || id === 'arena3') {
       carregarMapa(id, 'entrada', { posicionar: false, ganchos: false });
       try {
         var pos = (Sv.collectSaveData) ? null : null;
@@ -427,18 +495,22 @@ function continuarSalvo() {
       }
     } catch (e) {}
     marcarMapaAtual(inBoss ? mapaId : mapaId);
-    try { if (Mus && typeof Mus.tocarTema === 'function') Mus.tocarTema(id === 'arena' || id === 'arena2' ? 'boss_theme' : id === 'ruin_entry' ? 'ruin_theme' : id === 'brisamar' ? 'brisamar_theme' : id === 'valdora' ? 'valdora_theme' : 'forest_theme'); } catch (e) {}
+    try { if (Mus && typeof Mus.tocarTema === 'function') Mus.tocarTema(temaDoMapa(id)); } catch (e) {}
     espelharGlobals();
     st = 'play';
+    // Retoma a cena pós-Sentinela se o save foi feito no meio dela.
+    if (id === 'arena3' && lerFlag('boss3_defeated') && !lerFlag('fragmentos_roubados')) {
+      try { cenaPosBoss3(); } catch (e) {}
+    }
     return true;
   } catch (e) { return false; }
 }
 function retry() {
   P.hp = P.hpMax || 8; P.inv = 60; P.kx = 0; P.ky = 0; menuOpen = false;
   if (UI && typeof UI.continuarJogo === 'function') { try { UI.continuarJogo(); } catch (e) {} }
-  if (inBoss || mapaId === 'arena' || mapaId === 'arena2') { carregarMapa(mapaId, 'entrada', { posicionar: true, ganchos: false }); }
+  if (inBoss || mapaId === 'arena' || mapaId === 'arena2' || mapaId === 'arena3') { carregarMapa(mapaId, 'entrada', { posicionar: true, ganchos: false }); }
   else {
-    var sp = mapaId === 'brisamar' ? 'home' : mapaId === 'ruin_entry' ? 'entry' : mapaId === 'valdora' ? 'entrada_sul' : mapaId === 'esgoto' ? 'entrada' : 'fromBrisamar';
+    var sp = mapaId === 'brisamar' ? 'home' : mapaId === 'ruin_entry' ? 'entry' : mapaId === 'valdora' ? 'entrada_sul' : mapaId === 'esgoto' ? 'entrada' : mapaId === 'montanha' ? 'de_valdora' : mapaId === 'ruinas1' ? 'entrada' : mapaId === 'ruinas2' ? 'entrada_leste' : 'fromBrisamar';
     carregarMapa(mapaId || 'forest', sp, { posicionar: true, ganchos: false });
   }
   st = 'play';
@@ -501,14 +573,18 @@ function usarObjeto(o) {
   }
   if (o.tipo === 'passagem') {
     if (!lerFlag('frag_green')) { showMsg('Parede sólida... mas Lumi sente algo estranho.'); return true; }
-    if (lerFlag('esconderijo')) { showMsg('O esconderijo está vazio.'); return true; }
-    gravarFlag('esconderijo', true);
+    var flagPass = o.flagPass || 'esconderijo';
+    if (lerFlag(flagPass)) { showMsg('O esconderijo está vazio.'); return true; }
+    gravarFlag(flagPass, true);
     items.push({ x: o.x + 1, y: o.y + 3, t: 'h' });
     items.push({ x: o.x + 8, y: o.y + 3, t: 'h' });
-    showMsg('Passagem secreta! Corações à vista.');
+    // F3: a passagem das ruínas também revela um registro secreto.
+    if (o.recordId && !lerFlag(o.recordId)) items.push({ x: o.x + 4, y: o.y + 8, t: 'r', rid: o.recordId });
+    showMsg(o.recordId ? 'Passagem secreta! Algo brilha lá dentro.' : 'Passagem secreta! Corações à vista.');
     playSnd(1000, 0.3, 'triangle');
     return true;
   }
+  if (o.tipo === 'diario') { playDialogId(o.dialog); return true; }
   return false;
 }
 function temEspada() { return lerFlag('got_sword'); }
@@ -537,7 +613,7 @@ function shoot() {
     return;
   }
   P.cd = 30;
-  S.push({ x: P.x + 5, y: P.y + 5, vx: DX[P.d] * 2.6, vy: DY[P.d] * 2.6, l: 70 });
+  S.push({ x: P.x + 5, y: P.y + 5, vx: DX[P.d] * 2.6, vy: DY[P.d] * 2.6, l: 70, sid: ++shotSeq });
   playSnd(900, 0.07);
 }
 function passoAtual() { try { if (G && G.flags) return G.flags.step | 0; } catch (e) {} var n = 0; for (var i = 0; i < runes.length; i++) if (runes[i].on) n++; return n; }
@@ -649,9 +725,75 @@ function hitRuna(r) {
   }
 }
 function hitChefe(n) { if (!B || B.fl > 0 || B.hp <= 0) return; B.hp -= n; B.fl = 10; playSnd(200, 0.1); }
+// ---- F3: mecanismos das Ruínas do Norte (D-24) ----
+function reaplicarPortoes() {
+  try {
+    var def = defMapa(mapaId);
+    if (def && Mec && typeof Mec.aplicarPortoes === 'function') Mec.aplicarPortoes(def, M, (G && G.flags) ? G.flags : {});
+  } catch (e) {}
+}
+function ativarInterruptor(itr) {
+  if (itr.on) { showMsg('O mecanismo já está travado.'); return; }
+  itr.on = 1;
+  gravarFlag(itr.flag, true);
+  reaplicarPortoes();
+  playSnd(500, 0.1, 'square'); playSnd(950, 0.25, 'triangle');
+  showMsg('Clank! Um mecanismo gira nas profundezas das ruínas.');
+  try { if (Sv && typeof Sv.saveOnKeyItem === 'function') Sv.saveOnKeyItem(itr.flag); } catch (e) {}
+}
+function ativarPainel(pn) {
+  if (pn.on) { showMsg('O painel já brilha.'); return; }
+  if (lerFlag('f3_enigma')) return;
+  var r = null;
+  try {
+    if (Mec && typeof Mec.acertarPainel === 'function') r = Mec.acertarPainel(painelProg, pn.ordem, paineis.length);
+  } catch (e) {}
+  if (!r) r = (pn.ordem === painelProg) ? { prog: painelProg + 1, completo: painelProg + 1 >= paineis.length, erro: false } : { prog: 0, completo: false, erro: true };
+  painelProg = r.prog;
+  if (r.erro) {
+    paineis.forEach(function (o) { o.on = 0; });
+    playSnd(110, 0.3, 'sawtooth');
+    showMsg('Os painéis se apagaram... A ordem recomeça.');
+    return;
+  }
+  pn.on = 1;
+  playSnd(600 + pn.ordem * 150, 0.2, 'triangle');
+  if (r.completo) {
+    gravarFlag('f3_enigma', true);
+    reaplicarPortoes();
+    playSnd(900, 0.4, 'triangle');
+    showMsg('Um clique profundo! A porta do saguão se abriu.');
+    try { if (Sv && typeof Sv.saveOnKeyItem === 'function') Sv.saveOnKeyItem('enigma-f3'); } catch (e) {}
+  } else {
+    showMsg('Painel aceso! (' + painelProg + '/' + paineis.length + ')');
+  }
+}
+// Cadeia pós-Sentinela: gravação do pai → estrondo → Darius de armadura negra
+// toma os fragmentos (D-24: as HABILIDADES ficam; os fragmentos físicos vão).
+function cenaPosBoss3() {
+  flashT = 10; playSnd(55, 0.5, 'sawtooth');
+  try { npcs.push({ id: 'darius_negro', nome: 'Darius', x: P.x + 24, y: P.y - 6, w: 10, h: 10 }); } catch (e) {}
+  playDialogId('gravacao_pai', function () {
+    flashT = 12; playSnd(70, 0.4, 'sawtooth');
+    playDialogId('darius_armadura', function () {
+      try { npcs = npcs.filter(function (n) { return n.id !== 'darius_negro'; }); } catch (e) {}
+      flashT = 12; playSnd(50, 0.5, 'sawtooth');
+      transicaoPara('valdora', 'praca', 'retorno_cap3');
+    });
+  });
+}
 function textoObjetivo() {
+  if (mapaId === 'arena3' || (inBoss && B && B.kind === 'sentinela')) return 'Derrote o Sentinela de Ferro';
   if (mapaId === 'arena2' || (inBoss && B && B.kind === 'cavaleiro')) return 'Derrote o Cavaleiro Corrompido';
   if (inBoss || mapaId === 'arena') return MVP_OBJ[4];
+  if (mapaId === 'montanha') return 'Suba a trilha até a entrada das ruínas';
+  if (mapaId === 'ruinas1' || mapaId === 'ruinas2') {
+    if (!lerFlag('f3_enigma')) return 'Decifre os painéis do saguão das ruínas';
+    var mec = (lerFlag('sw_ruin_a') ? 1 : 0) + (lerFlag('sw_ruin_b') ? 1 : 0) + (lerFlag('sw_ruin_c') ? 1 : 0);
+    if (mec < 3) return 'Acione os mecanismos das ruínas (' + mec + '/3)';
+    if (!lerFlag('boss3_defeated')) return 'A porta selada abriu: suba ao norte da ala';
+    return 'Volte para Valdora';
+  }
   if (mapaId === 'brisamar') {
     if (!lerFlag('darius_left')) return 'Vá ao festival e fale com o pessoal';
     if (!lerFlag('got_sword')) return 'Visite o Mestre Orin na lagoa';
@@ -659,11 +801,12 @@ function textoObjetivo() {
   }
   if (mapaId === 'ruin_entry') return 'Desça pelo corredor ao norte';
   if (mapaId === 'valdora') {
+    if (lerFlag('fragmentos_roubados')) return 'Aguarde o Capítulo 4';
     if (!lerFlag('darius_prov')) return 'Explore Valdora e fale com o pessoal';
     if (!lerFlag('fragmento_pista')) return 'Descubra a pista do fragmento';
     if (!lerFlag('boss2_defeated')) return 'Entre no templo, ao norte';
     if (!lerFlag('proposta_vista')) return 'Volte à praça';
-    return 'Aguarde o Capítulo 3';
+    return 'A passagem norte, junto à muralha, está aberta';
   }
   if (mapaId === 'esgoto') return 'Explore os esgotos';
   try { if (G && typeof G.indiceObjetivoCap1 === 'function') return MVP_OBJ[G.indiceObjetivoCap1()]; } catch (e) {}
@@ -714,8 +857,25 @@ function update() {
     }
   }
   if (P.dash > 0) { dx = DX[P.d]; dy = DY[P.d]; }
-  var sp = P.dash > 0 ? 2.6 : (P.at > 0 ? 0.5 : 1.1);
-  mv(P, dx * sp, dy * sp);
+  // F3: piso de gelo ('I') — ao entrar, o jogador desliza na direção atual
+  // até sair do gelo ou bater; parado no gelo, um novo impulso recomeça.
+  var noGelo = false;
+  try {
+    var linhaGelo = M[Math.floor((P.y + 5) / T)];
+    if (linhaGelo) noGelo = linhaGelo[Math.floor((P.x + 5) / T)] === 'I';
+  } catch (e) {}
+  if (noGelo && P.dash <= 0) {
+    if (!deslize && (dx || dy)) deslize = P.d;
+    if (deslize) {
+      var antesX = P.x, antesY = P.y;
+      mv(P, DX[deslize] * 1.5, DY[deslize] * 1.5);
+      if (P.x === antesX && P.y === antesY) deslize = 0;
+    }
+  } else {
+    deslize = 0;
+    var sp = P.dash > 0 ? 2.6 : (P.at > 0 ? 0.5 : 1.1);
+    mv(P, dx * sp, dy * sp);
+  }
   if (P.kx || P.ky) { mv(P, P.kx, P.ky); P.kx *= 0.8; P.ky *= 0.8; }
   // golpe de espada
   if (P.at >= 4 && P.at <= 10) {
@@ -728,6 +888,14 @@ function update() {
       var rr = runes[ri];
       if (rr.sw !== swing && ov(hb, { x: rr.x, y: rr.y, w: T, h: T })) { rr.sw = swing; hitRuna(rr); }
     }
+    for (var pi = 0; pi < paineis.length; pi++) {
+      var pnl = paineis[pi];
+      if (pnl.sw !== swing && ov(hb, { x: pnl.x, y: pnl.y, w: T, h: T })) { pnl.sw = swing; ativarPainel(pnl); }
+    }
+    for (var ii3 = 0; ii3 < interruptores.length; ii3++) {
+      var itr2 = interruptores[ii3];
+      if (itr2.sw !== swing && ov(hb, { x: itr2.x, y: itr2.y, w: T, h: T })) { itr2.sw = swing; ativarInterruptor(itr2); }
+    }
     if (B && B.hp > 0 && B.sw !== swing && ov(hb, { x: B.x, y: B.y, w: 28, h: 28 })) { B.sw = swing; hitChefe(danoEspada()); }
     if (bush && ov(hb, { x: bush.x, y: bush.y, w: T, h: T })) {
       gravarFlag('bush_key_found', true);
@@ -739,17 +907,32 @@ function update() {
     }
   }
   // projéteis de Lumi
+  var perfura = lerFlag('frag_blue'); // F3: magia evoluiu — perfura e cruza abismos
   for (var si = 0; si < S.length; si++) {
     var s = S[si];
     s.x += s.vx; s.y += s.vy; s.l--;
-    if (solidAt(s.x, s.y)) s.l = 0;
+    var chS = '#';
+    var ciS = Math.floor(s.x / T), cjS = Math.floor(s.y / T);
+    if (cjS >= 0 && cjS < MH && ciS >= 0 && ciS < MW && M[cjS]) chS = M[cjS][ciS];
+    if (solidoEm(chS) && !(perfura && chS === 'O')) s.l = 0;
     for (var q = 0; q < runes.length; q++) {
       var rq = runes[q];
       if (s.l > 0 && Math.abs(s.x - rq.x - 8) < 8 && Math.abs(s.y - rq.y - 8) < 8) { s.l = 0; hitRuna(rq); }
     }
+    for (var qP = 0; qP < paineis.length; qP++) {
+      var rpP = paineis[qP];
+      if (s.l > 0 && Math.abs(s.x - rpP.x - 8) < 9 && Math.abs(s.y - rpP.y - 8) < 9) { s.l = 0; ativarPainel(rpP); }
+    }
+    for (var qI = 0; qI < interruptores.length; qI++) {
+      var rqI = interruptores[qI];
+      if (s.l > 0 && Math.abs(s.x - rqI.x - 8) < 9 && Math.abs(s.y - rqI.y - 8) < 9) { s.l = 0; ativarInterruptor(rqI); }
+    }
     for (var q2 = 0; q2 < E.length; q2++) {
       var e2 = E[q2];
-      if (s.l > 0 && e2.hp > 0 && Math.hypot(s.x - e2.x - 5, s.y - e2.y - 5) < 9) { s.l = 0; hurtE(e2, 1); }
+      if (s.l > 0 && e2.hp > 0 && Math.hypot(s.x - e2.x - 5, s.y - e2.y - 5) < 9) {
+        if (perfura) { if (e2.hs2 !== s.sid) { e2.hs2 = s.sid; hurtE(e2, 1); } }
+        else { s.l = 0; hurtE(e2, 1); }
+      }
     }
     if (B && B.hp > 0 && s.l > 0 && s.x > B.x && s.x < B.x + 28 && s.y > B.y && s.y < B.y + 28) { s.l = 0; hitChefe(1); }
   }
@@ -759,7 +942,7 @@ function update() {
     var e = E[i];
     if (e.fl > 0) e.fl--;
     var ex = P.x - e.x, ey = P.y - e.y, d = Math.hypot(ex, ey) || 1;
-    if (e.kind === 'rootbat') {
+    if (e.kind === 'rootbat' || e.kind === 'corvo') {
       var spd = 0.8;
       if (e.tl > 0) { e.tl--; if (e.tl === 0) { e.vx = ex / d * spd * 2.2; e.vy = ey / d * spd * 2.2; e.sd = 25; } }
       else if (e.sd > 0) { e.sd--; mv(e, e.vx, e.vy); if (e.sd === 0) e.cd = 120; }
@@ -791,6 +974,16 @@ function update() {
     if (!item.g && Math.hypot(P.x - item.x, P.y - item.y) < 11) {
       item.g = 1;
       if (item.t === 'k') { marcarChave(); showMsg('Chave obtida! Vá ao portão.'); playSnd(1000, 0.3, 'triangle'); }
+      else if (item.t === 'r') {
+        // F3: registro secreto — flag própria (não reaparece) + contador canônico.
+        gravarFlag(item.rid, true);
+        var nReg = 0;
+        try { nReg = Mec && Mec.contarRegistros ? Mec.contarRegistros(G.flags) : 0; } catch (e) {}
+        try { if (G && typeof G.setFlag === 'function') G.setFlag('secret_records', Math.max(nReg, G.flags.secret_records | 0)); } catch (e) {}
+        showMsg('Registro antigo recuperado! (' + nReg + '/' + (Mec ? Mec.TOTAL_REGISTROS : 5) + ')');
+        playSnd(1300, 0.25, 'triangle');
+        try { if (Sv && typeof Sv.saveOnKeyItem === 'function') Sv.saveOnKeyItem('registro'); } catch (e) {}
+      }
       else { P.hp = Math.min(P.hpMax || 8, P.hp + 2); playSnd(800, 0.1); }
     }
   }
@@ -842,7 +1035,14 @@ function update() {
     if (B.hp <= 0) {
       if (++B.dc > 70 && !B.end) {
         B.end = 1; RT = [];
-        if (B.kind === 'cavaleiro') {
+        if (B.kind === 'sentinela') {
+          // D-24: Fragmento Azul + coração → cadeia gravação/Darius → Valdora.
+          gravarFlag('boss3_defeated', true);
+          gravarFlag('frag_blue', true);
+          P.hpMax = 12; P.hp = 12;
+          try { if (Sv && typeof Sv.saveOnMapChange === 'function') Sv.saveOnMapChange('arena3'); } catch (e) {}
+          playDialogId('vitoria3', function () { cenaPosBoss3(); });
+        } else if (B.kind === 'cavaleiro') {
           // D-20: Fragmento Verde + coração extra; volta à praça p/ o gancho.
           gravarFlag('boss2_defeated', true);
           gravarFlag('frag_green', true);
@@ -860,6 +1060,36 @@ function update() {
           }
         }
       }
+    } else if (B.kind === 'sentinela') {
+      // D-24: Sentinela de Ferro — persegue, telegraph 40f, investida em linha
+      // reta; se bater na parede, trava (stun = janela de punição). Fase 2
+      // (hp ≤ 16): mais rápido e a trava solta 6 estilhaços radiais.
+      var sx2 = B.x + 14, sy2 = B.y + 14;
+      var sdx = P.x + 5 - sx2, sdy = P.y + 5 - sy2, sdd = Math.hypot(sdx, sdy) || 1;
+      var furioso3 = B.hp <= 16;
+      B.t--;
+      if (B.m === 'walk') {
+        B.x += sdx / sdd * (furioso3 ? 0.7 : 0.55); B.y += sdy / sdd * (furioso3 ? 0.7 : 0.55);
+        if (B.t <= 0) { B.m = 'tel'; B.t = 40; playSnd(520, 0.25, 'triangle'); }
+      } else if (B.m === 'tel') {
+        if (B.t <= 0) { B.m = 'carga'; B.t = 26; B.vx = sdx / sdd * 3; B.vy = sdy / sdd * 3; playSnd(90, 0.35, 'sawtooth'); }
+      } else if (B.m === 'carga') {
+        var parede = B.x + B.vx < T || B.x + B.vx > MW * T - T - 28 || B.y + B.vy < T || B.y + B.vy > MH * T - T - 28;
+        if (parede) {
+          B.x = Math.max(T, Math.min(MW * T - T - 28, B.x)); B.y = Math.max(T, Math.min(MH * T - T - 28, B.y));
+          B.vx = 0; B.vy = 0; B.m = 'stun'; B.t = 55; playSnd(240, 0.3, 'square');
+          if (furioso3) for (var qa = 0; qa < 6; qa++) RT.push({ x: sx2, y: sy2, vx: Math.cos(qa * Math.PI / 3) * 1.5, vy: Math.sin(qa * Math.PI / 3) * 1.5, l: 130, c: '#9ad' });
+        } else {
+          B.x += B.vx; B.y += B.vy;
+          if (sdd < 24) hurtP(sx2, sy2);
+          if (B.t <= 0) { B.m = 'rest'; B.t = furioso3 ? 40 : 50; }
+        }
+      } else if (B.m === 'stun') {
+        if (B.t <= 0) { B.m = 'rest'; B.t = 30; }
+      } else if (B.t <= 0) { B.m = 'walk'; B.t = (furioso3 ? 50 : 60) + Math.random() * 20; }
+      B.x = Math.max(T, Math.min(MW * T - T - 28, B.x));
+      B.y = Math.max(T, Math.min(MH * T - T - 28, B.y));
+      if (sdd < 20 && B.m !== 'carga' && B.m !== 'stun') hurtP(sx2, sy2);
     } else if (B.kind === 'cavaleiro') {
       var cx2 = B.x + 14, cy2 = B.y + 14;
       var ddx = P.x + 5 - cx2, ddy = P.y + 5 - cy2, dd = Math.hypot(ddx, ddy) || 1;
@@ -945,6 +1175,14 @@ function faixaHud(bx, by, bw, bh) {
 var COR_NPC = { 'Mãe': '#4a9c5d', 'Darius': '#c0392b', 'Morador': '#9aa0a6', 'Mestre Orin': '#5d6d7e', 'Menina': '#e88ec9', 'Capitão': '#3a6ea5', 'Refugiado': '#8a7a5a', 'Estranho': '#2a1a3a' };
 function desenharNpc(n) {
   if (n.id === 'gato') return; // gato é objeto (desenhado em desenharObjetos)
+  // F3: Darius de armadura negra (cena pós-Sentinela, figuração estática)
+  if (n.id === 'darius_negro') {
+    R('#16161e', n.x, n.y - 2, 10, 14);
+    R('#22222c', n.x, n.y - 2, 10, 5);
+    R('#c22', n.x + 2, n.y + 1, 6, 2);
+    R('#f33', n.x + 11, n.y - 4, 2, 12);
+    return;
+  }
   var cor = COR_NPC[n.nome] || '#9aa0a6';
   if (n.id === 'estranho') {
     R('#2a1a3a', n.x, n.y - 2, 10, 14);
@@ -958,6 +1196,22 @@ function desenharNpc(n) {
   if (n.id === 'darius') R('#e6c34a', n.x + 2, n.y + 5, 6, 2);
 }
 function desenharInimigo(e) {
+  if (e.kind === 'corvo') {
+    var f2 = e.fl > 0 || (e.tl > 0 && fr % 6 < 3);
+    var asa2 = (fr + e.x) % 20 < 10 ? -2 : 2;
+    R(f2 ? '#fff' : '#26303c', e.x - 3, e.y + 2 + asa2, 5, 3);
+    R(f2 ? '#fff' : '#26303c', e.x + 8, e.y + 2 - asa2, 5, 3);
+    R(f2 ? '#fff' : '#4a5c70', e.x + 1, e.y + 2, 8, 6);
+    R('#fa3', e.x + 4, e.y + 5, 2, 2);
+    return;
+  }
+  if (e.kind === 'slime_gelo') {
+    var g2 = e.fl > 0;
+    R(g2 ? '#fff' : '#7ab8d8', e.x - 1, e.y + 2, 12, 9);
+    R(g2 ? '#fff' : '#bfe4f5', e.x + 1, e.y, 8, 4);
+    R('#12304a', e.x + 2, e.y + 4, 2, 2); R('#12304a', e.x + 7, e.y + 4, 2, 2);
+    return;
+  }
   if (e.kind === 'rootbat') {
     var f = e.fl > 0 || (e.tl > 0 && fr % 6 < 3);
     var asa = (fr + e.x) % 20 < 10 ? -2 : 2;
@@ -974,6 +1228,19 @@ function desenharInimigo(e) {
 }
 function desenharChefe() {
   var f = B.fl > 0 && fr % 4 < 2, tel = B.m === 'tel' && fr % 6 < 3;
+  if (B.kind === 'sentinela') {
+    // D-24: sentinela de placas de ferro com olhos de runa azul.
+    if (!(B.hp <= 0 && fr % 4 < 2)) {
+      R(f ? '#fff' : tel ? '#9ad' : '#6a7684', B.x, B.y, 28, 28);
+      R(f ? '#fff' : tel ? '#7fd4ff' : '#414a56', B.x + 4, B.y + 4, 20, 8);
+      R('#7fd4ff', B.x + 7, B.y + 8, 4, 3); R('#7fd4ff', B.x + 17, B.y + 8, 4, 3);
+      R('#8a94a2', B.x - 2, B.y + 8, 4, 12); R('#8a94a2', B.x + 26, B.y + 8, 4, 12);
+      R('#2a3038', B.x + 5, B.y + 20, 18, 5);
+      if (B.m === 'stun' && fr % 8 < 4) { R('#ffd84d', B.x + 9, B.y - 6, 10, 3); R('#ffd84d', B.x + 12, B.y - 10, 4, 8); }
+    }
+    if (B.m === 'carga') { x.strokeStyle = '#9ad'; x.lineWidth = 2; x.beginPath(); x.arc(B.x + 14 - CX, B.y + 14 - CY, 26, 0, 7); x.stroke(); }
+    return;
+  }
   if (B.kind === 'cavaleiro') {
     if (!(B.hp <= 0 && fr % 4 < 2)) {
       R(f ? '#fff' : tel ? '#e88' : '#7a8aa0', B.x, B.y, 28, 28);
@@ -1005,11 +1272,32 @@ function desenharTiles() {
           if ((i * 31 + j * 17) % 19 === 0) R('#2a1a30', a + 3, b + 4, 6, 4);
         } else if (c === '#') { R('#1c5a2a', a, b, T, 13); R('#2f7d3a', a + 2, b + 1, 12, 8); R('#5a3a1e', a + 6, b + 12, 4, 4); }
         else if (c === 'G') { R('#666', a, b, T, T); R(temChave() ? '#352' : '#222', a + 3, b + 3, 10, 13); R(temChave() ? '#7f7' : '#fc4', a + 10, b + 9, 2, 2); }
-      } else if (mapaTileset === 'arena' || mapaTileset === 'arena2') {
-        R(mapaTileset === 'arena2' ? '#565664' : '#5a5a6a', a, b, T, T);
-        if (c === '.') { if ((i * 7 + j * 13) % 5 === 0) R('#666677', a + 4, b + 5, 2, 2); }
-        else if (c === '#') { R('#33334a', a, b, T, T); R('#444460', a + 1, b + 1, 14, 6); }
+      } else if (mapaTileset === 'arena' || mapaTileset === 'arena2' || mapaTileset === 'arena3') {
+        R(mapaTileset === 'arena3' ? '#4e5a6a' : mapaTileset === 'arena2' ? '#565664' : '#5a5a6a', a, b, T, T);
+        if (c === '.') { if ((i * 7 + j * 13) % 5 === 0) R(mapaTileset === 'arena3' ? '#5c6a7c' : '#666677', a + 4, b + 5, 2, 2); }
+        else if (c === '#') { R(mapaTileset === 'arena3' ? '#2c3646' : '#33334a', a, b, T, T); R(mapaTileset === 'arena3' ? '#40506a' : '#444460', a + 1, b + 1, 14, 6); }
         if (mapaTileset === 'arena2' && c === '.' && i >= 6 && i <= 8 && j === 1) R('#7a2a2a', a + 2, b + 1, 12, 4);
+      } else if (mapaTileset === 'montanha') {
+        R('#dce8f0', a, b, T, T);
+        if (c === '.') {
+          if ((i * 7 + j * 13) % 5 === 0) R('#c3d4e2', a + 4, b + 5, 2, 2);
+          if ((i * 31 + j * 17) % 23 === 0) R('#eef4fa', a + 2, b + 2, 5, 3);
+        } else if (c === '#') { R('#5c5560', a, b, T, T); R('#7d7480', a + 2, b + 3, 12, 8); R('#eef4fa', a + 2, b + 1, 12, 3); }
+        else if (c === 'O') { R('#0d1b2a', a, b, T, T); R('#dce8f0', a, b, T, 2); if ((i + j) % 3 === 0) R('#2a4a6a', a + 5, b + 8, 2, 2); }
+        else if (c === 'D') { R('#33334a', a, b, T, T); R('#1a1a2a', a + 2, b + 2, 12, 14); R('#7fd4ff', a + 3, b + 4, 1, 10); R('#7fd4ff', a + 12, b + 4, 1, 10); }
+        else if (c === 'T') { R('#dce8f0', a, b, T, T); R('#8a6a3a', a + 2, b + 4, 12, 9); R('#3a2a1a', a + 5, b + 8, 6, 5); }
+        else if (c === 'F') { R('#dce8f0', a, b, T, T); R('#5a3a1e', a + 3, b + 10, 10, 3); R('#444', a + 5, b + 7, 6, 3); }
+      } else if (mapaTileset === 'ruinas1' || mapaTileset === 'ruinas2') {
+        R('#9fb2c4', a, b, T, T);
+        if (c === '.') { if ((i * 11 + j * 7) % 6 === 0) R('#8da2b6', a + 5, b + 7, 3, 2); }
+        else if (c === 'I') { R('#bfe4f5', a, b, T, T); if ((i * 5 + j * 3) % 4 === 0) R('#e4f4fc', a + 3, b + 4, 6, 2); }
+        else if (c === '#') { R('#3c4656', a, b, T, T); R('#55657a', a + 1, b + 1, 14, 6); }
+        else if (c === 'O') { R('#0a1420', a, b, T, T); R('#9fb2c4', a, b, T, 2); }
+        else if (c === 'V') { R('#7a6a50', a, b, T, T); R('#5c4f38', a, b + 4, T, 2); R('#5c4f38', a, b + 10, T, 2); }
+        else if (c === 'G') { R('#22303c', a, b, T, T); R('#5a7fa5', a + 2, b + 2, 12, 12); R(fr % 50 < 25 ? '#7fd4ff' : '#4a9ad8', a + 6, b + 6, 4, 4); }
+        else if (c === 'd') { R('#9fb2c4', a, b, T, T); R('#22303c', a, b, 2, T); R('#22303c', a + 14, b, 2, T); }
+        else if (c === 'T') { R('#9fb2c4', a, b, T, T); var fl4 = (fr + i * 3 + j * 5) % 12 < 6; R('#22303c', a + 7, b + 6, 2, 10); R(fl4 ? '#7fd4ff' : '#3a8ac8', a + 5, b + 1, 6, 5); }
+        else if (c === 'D') { R('#22303c', a, b, T, T); R('#0f1a26', a + 2, b, 12, T); R('#7fd4ff', a + 2, b + 2, 2, 12); }
       } else if (mapaTileset === 'valdora') {
         R('#8a8a96', a, b, T, T);
         if (c === '.' || c === 'F') { if ((i * 5 + j * 11) % 7 === 0) R('#7c7c88', a + 6, b + 6, 3, 2); }
@@ -1071,6 +1359,7 @@ function desenharObjetos() {
     }
     else if (o.tipo === 'grade') { R('#33333c', o.x + 1, o.y + 2, 14, 12); R('#888899', o.x + 3, o.y + 2, 2, 12); R('#888899', o.x + 7, o.y + 2, 2, 12); R('#888899', o.x + 11, o.y + 2, 2, 12); }
     else if (o.tipo === 'bau') { R('#6a421f', o.x + 2, o.y + 5, 12, 9); R('#8a5a2a', o.x + 2, o.y + 5, 12, 4); R('#c9a13a', o.x + 7, o.y + 8, 2, 4); }
+    else if (o.tipo === 'diario') { R('#5c4630', o.x + 2, o.y + 8, 12, 6); R('#e8dcc0', o.x + 3, o.y + 4, 10, 6); R('#b05038', o.x + 7, o.y + 4, 2, 6); }
     else if (o.tipo === 'passagem') {
       R('#2c2c38', o.x, o.y, T, T);
       if (lerFlag('frag_green') && fr % 40 < 25) { R('#7f7', o.x + 3, o.y + 4, 2, 2); R('#7f7', o.x + 10, o.y + 9, 2, 2); }
@@ -1100,9 +1389,9 @@ function render() {
     txt('A LENDA DO CRISTAL', W / 2, 40, '#ffd866', 'center');
     txt('DO AMANHECER', W / 2, 54, '#ffd866', 'center');
     x.font = 'bold 8px monospace';
-    var cap2 = false;
-    try { cap2 = G && G.flags && G.flags.chapter === 2; } catch (e) {}
-    txt(cap2 ? 'Cap. 2: A Cidade de Valdora' : 'Prólogo + Cap. 1: Brisamar e a Floresta', W / 2, 70, '#9cf', 'center');
+    var capN = 1;
+    try { capN = (G && G.flags && G.flags.chapter) | 0 || 1; } catch (e) {}
+    txt(capN === 3 ? 'Cap. 3: As Ruínas do Norte' : capN === 2 ? 'Cap. 2: A Cidade de Valdora' : 'Prólogo + Cap. 1: Brisamar e a Floresta', W / 2, 70, '#9cf', 'center');
     txt('Nome: ' + nomeJogador.toUpperCase(), W / 2, 88, '#ffd866', 'center');
     var hasSave = false;
     try { hasSave = Sv && typeof Sv.hasSave === 'function' && Sv.hasSave(); } catch (e) {}
@@ -1140,15 +1429,35 @@ function render() {
     var rn = runes[rni];
     R('#666', rn.x + 2, rn.y + 3, 12, 13); R(rn.on ? rn.c : '#333', rn.x + 4, rn.y + 5, 8, 8); R(rn.on ? '#fff' : rn.c, rn.x + 7, rn.y + 8, 2, 2);
   }
+  // F3: painéis ordenados (enigma) e interruptores de portão
+  for (var pni = 0; pni < paineis.length; pni++) {
+    var pnd = paineis[pni];
+    R('#3c4656', pnd.x + 2, pnd.y + 2, 12, 12);
+    R(pnd.on ? '#203a4c' : '#222b38', pnd.x + 4, pnd.y + 4, 8, 8);
+    var corS = pnd.simbolo === 'sol' ? '#fc3' : pnd.simbolo === 'estrela' ? '#6cf' : '#eef';
+    var corAp = pnd.simbolo === 'sol' ? '#765' : pnd.simbolo === 'estrela' ? '#345' : '#667';
+    var cS2 = pnd.on ? corS : corAp;
+    if (pnd.simbolo === 'sol') { R(cS2, pnd.x + 6, pnd.y + 6, 4, 4); R(cS2, pnd.x + 7, pnd.y + 3, 2, 2); R(cS2, pnd.x + 7, pnd.y + 11, 2, 2); }
+    else if (pnd.simbolo === 'estrela') { R(cS2, pnd.x + 7, pnd.y + 4, 2, 8); R(cS2, pnd.x + 4, pnd.y + 7, 8, 2); }
+    else { R(cS2, pnd.x + 8, pnd.y + 4, 4, 8); R('#222b38', pnd.x + 9, pnd.y + 5, 3, 6); }
+    if (pnd.on && fr % 30 < 15) R('#fff', pnd.x + 7, pnd.y + 7, 2, 2);
+  }
+  for (var ini = 0; ini < interruptores.length; ini++) {
+    var its = interruptores[ini];
+    R('#333a46', its.x + 3, its.y + 10, 10, 4);
+    R(its.on ? '#4f7' : '#f66', its.x + 7 + (its.on ? -3 : 0), its.y + 2, 3, 9);
+    R('#8892a2', its.x + 5, its.y + 9, 6, 3);
+  }
   for (var ii = 0; ii < items.length; ii++) {
     var it = items[ii];
     if (it.t === 'k') { R('#fc4', it.x, it.y + 2, 8, 3); R('#fc4', it.x, it.y, 4, 7); }
+    else if (it.t === 'r') { var pl2 = fr % 40 < 25 ? '#7fd4ff' : '#4a9ad8'; R('#22303c', it.x - 2, it.y - 1, 9, 10); R(pl2, it.x, it.y, 5, 8); R('#fff', it.x + 1, it.y + 2, 2, 2); }
     else { R('#f44', it.x, it.y, 3, 3); R('#f44', it.x + 4, it.y, 3, 3); R('#f44', it.x, it.y + 2, 7, 4); }
   }
   for (var nni = 0; nni < npcs.length; nni++) desenharNpc(npcs[nni]);
   for (var ei = 0; ei < E.length; ei++) desenharInimigo(E[ei]);
   if (B && !B.end) desenharChefe();
-  for (var ri2 = 0; ri2 < RT.length; ri2++) { var r2 = RT[ri2]; R('#a22', r2.x - 2, r2.y - 2, 5, 5); }
+  for (var ri2 = 0; ri2 < RT.length; ri2++) { var r2 = RT[ri2]; R(r2.c || '#a22', r2.x - 2, r2.y - 2, 5, 5); }
   for (var si = 0; si < S.length; si++) { var sp2 = S[si]; R('#9ff', sp2.x - 2, sp2.y - 2, 4, 4); }
   if (!(P.inv > 0 && fr % 6 < 3)) {
     R('#2a5fd0', P.x, P.y + 4, 10, 8);
@@ -1184,15 +1493,14 @@ function render() {
   })();
   if (B && B.hp > 0) {
     // Chefe: nome + barra sobre faixa escura, com borda clara na barra.
+    // (Dívida quitada: `wChefe` morto removido — ver 06_QA_AUDIT.md, F2.5.)
     x.font = 'bold 8px monospace';
     var rotChefe = B.nome || 'Chefe';
-    var wChefe = Math.min(150, Math.max(70, x.measureText(rotChefe).width + 14));
     faixaHud(60 - 4, H - 26, 128, 20);
     txt(rotChefe, 62, H - 15, '#ffb3b3');
     F('#000', 60, H - 12, 120, 6);
     try { x.strokeStyle = 'rgba(255,255,255,0.5)'; x.lineWidth = 1; x.strokeRect(60.5, (H - 12) + 0.5, 119, 5); } catch (e) {}
     F('#c33', 61, H - 11, 118 * B.hp / (B.hpMax || 24), 4);
-    void wChefe;
   }
   var toastOn = false, toastTxt = mt;
   if (UI && typeof UI.toastVisivel === 'function') {
@@ -1263,6 +1571,14 @@ function render() {
       if (selMi) faixaHud(W / 2 - 90, 68 + mi * 13, 180, 13);
       txt((selMi ? '▶ ' : '  ') + ops[mi], W / 2, 78 + mi * 13, selMi ? '#8cff8c' : '#ffffff', 'center');
     }
+    // Aceite F3: contador de registros secretos no HUD do menu.
+    var nReg3 = 0, totReg3 = 5;
+    try {
+      totReg3 = (Mec && Mec.TOTAL_REGISTROS) || 5;
+      nReg3 = Mec && Mec.contarRegistros ? Mec.contarRegistros(G && G.flags) : ((G && G.flags && G.flags.secret_records) | 0);
+    } catch (e) {}
+    x.font = 'bold 8px monospace';
+    txt('Registros antigos: ' + nReg3 + '/' + totReg3, W / 2, 120, nReg3 >= totReg3 ? '#8cff8c' : '#9fd4ff', 'center');
   }
   if (st === 'over') {
     F('rgba(0,0,0,.7)', 0, 0, W, H);
@@ -1289,6 +1605,7 @@ function render() {
     txt((endIdx === 1 ? '▶ ' : '  ') + rotC, W / 2, 120, endIdx === 1 ? '#8cff8c' : '#ffffff', 'center');
     if (fr % 60 < 40) { x.font = 'bold 8px monospace'; txt(toque ? 'Toque p/ confirmar' : 'Cima/baixo escolhe · Z confirma', W / 2, 138, '#cccccc', 'center'); }
   }
+  if (flashT > 0) { x.fillStyle = 'rgba(255,255,255,' + (Math.min(1, flashT / 10) * 0.85).toFixed(2) + ')'; x.fillRect(0, 0, W, H); }
   var fadeA = 0;
   try {
     if (UI && typeof UI.obterAlphaFade === 'function') fadeA = UI.obterAlphaFade() || 0;
@@ -1309,6 +1626,7 @@ function loop(t) {
     try { dlgAtivo = (Dlg && typeof Dlg.isDialogueActive === 'function' && Dlg.isDialogueActive()) || st === 'talk'; } catch (e) { dlgAtivo = st === 'talk'; }
     if (UI && typeof UI.updateToast === 'function') { try { UI.updateToast(dlgAtivo); } catch (e) {} }
     if (UI && typeof UI.updateFade === 'function') { try { UI.updateFade(); } catch (e) {} }
+    if (flashT > 0) flashT--;
     // D-23: navegação cima/baixo unificada (teclado + touch + gamepad escrevem K;
     // a borda decide). Cobre escolhas de diálogo, menu de pausa e menu do fim.
     try {
@@ -1477,7 +1795,7 @@ try { if (UI && typeof UI.iniciarPausaAutomatica === 'function') UI.iniciarPausa
 try { if (UI && typeof UI.definirAcaoReiniciarSala === 'function') UI.definirAcaoReiniciarSala(function () { retry(); }); } catch (e) {}
 try {
   if (Wd && typeof Wd.registerMap === 'function') {
-    var ids = ['brisamar', 'forest', 'ruin_entry', 'valdora', 'esgoto'];
+    var ids = ['brisamar', 'forest', 'ruin_entry', 'valdora', 'esgoto', 'montanha', 'ruinas1', 'ruinas2'];
     for (var bi = 0; bi < ids.length; bi++) {
       var dd = defMapa(ids[bi]);
       if (dd) { try { Wd.registerMap(ids[bi], dd); } catch (e2) {} }

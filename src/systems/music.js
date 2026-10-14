@@ -37,6 +37,10 @@
   var BAIXO_FLORESTA = seq('0,6 0,6 1,6 4,6');
   var MELODIA_RUINAS = seq('0,4 -1,2 3,2 2,2 -1,2 1,4 -1,2 0,6');
   var BAIXO_RUINAS = seq('0,12 5,12');
+  // Montanha nevada: mesma semente melódica das ruínas, mais lenta e espaçada
+  // (vento + altitude); menor, tônica mais grave que a floresta.
+  var MELODIA_MONTANHA = seq('0,6 -1,3 2,3 1,6 -1,3 3,3 2,10');
+  var BAIXO_MONTANHA = seq('0,12 -1,6 1,12');
   var MELODIA_VALDORA = seq(
     '0,1 2,1 4,1 5,1 7,2 5,1 4,1 2,1 0,2 2,2 4,2 5,2 7,2 9,2 7,2 5,1');
   var BAIXO_VALDORA = seq('0,2 0,2 4,2 3,2 0,2 0,2 4,2 4,2');
@@ -62,7 +66,8 @@
     ruin_theme: criarTema(70, 3, ESCALA_MENOR, 57, 0.4, 0.36, MELODIA_RUINAS, BAIXO_RUINAS),
     boss_theme: criarTema(152, 4, ESCALA_MENOR, 64, 0.46, 0.4, MELODIA_CHEFE, BAIXO_CHEFE, PERCUSSAO_CHEFE),
     title_theme: criarTema(78, 3, ESCALA_MAIOR, 72, 0.42, 0.35, MELODIA_BRISAMAR, BAIXO_TITULO),
-    valdora_theme: criarTema(126, 4, ESCALA_MAIOR, 72, 0.44, 0.38, MELODIA_VALDORA, BAIXO_VALDORA, PERCUSSAO_VALDORA)
+    valdora_theme: criarTema(126, 4, ESCALA_MAIOR, 72, 0.44, 0.38, MELODIA_VALDORA, BAIXO_VALDORA, PERCUSSAO_VALDORA),
+    montanha_theme: criarTema(62, 3, ESCALA_MENOR, 60, 0.36, 0.34, MELODIA_MONTANHA, BAIXO_MONTANHA)
   };
 
   var GANHO_DEDICADO = 0.02; // ~40% do mestre dos SFX — anti-clipping

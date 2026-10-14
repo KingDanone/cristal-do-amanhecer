@@ -156,7 +156,7 @@ t('A09 sem console.log/debug em src', !/console\.(log|debug|trace)/.test(strippe
 // A10: todos os destinos de saída existem
 let exitOk = true, exitBad = '';
 try {
-  const ids = new Set(['brisamar', 'forest', 'ruin_entry', 'ruin', 'boss', 'arena', 'arena2', 'floresta', 'valdora', 'esgoto']);
+  const ids = new Set(['brisamar', 'forest', 'ruin_entry', 'ruin', 'boss', 'arena', 'arena2', 'arena3', 'floresta', 'valdora', 'esgoto', 'montanha', 'ruinas1', 'ruinas2']);
   for (const o of all) {
     for (const m of o.code.matchAll(/to:\s*["']([\w-]+)["']/g)) {
       if (!ids.has(m[1])) { exitOk = false; exitBad = o.f + ' → ' + m[1]; break; }
@@ -219,9 +219,9 @@ try {
   }
 } catch (e) { chOk = false; }
 t('A14 choices com 2–3 opções', chOk, 'choice fora do padrão');
-// A15: chefe 24HP / jogador 8HP preservados
-t('A15 HP canônicos (jogador 8→10 no Cap.2, guardião 24, cavaleiro 28)',
-  /hp:\s*24|vidaMaxima:\s*24|hp:\s*28|hpMax:\s*28|MAX_HP\s*=\s*10/.test(joined),
+// A15: chefe 24HP / 28HP / 32HP preservados; hpMax do jogador cresce 8→10→12
+t('A15 HP canônicos (jogador 8→10→12, guardião 24, cavaleiro 28, sentinela 32)',
+  /hp:\s*32|hp:\s*24|hp:\s*28/.test(joined) && /MAX_HP\s*=\s*12/.test(joined),
   'valores de combate alterados sem decisão');
 
 // ---- A16/A17/A18: conteúdo F1 (mapas + diálogos) ----
@@ -230,7 +230,7 @@ t('A15 HP canônicos (jogador 8→10 no Cap.2, guardião 24, cavaleiro 28)',
 function defsConteudo() {
   const sb = { console };
   vm.createContext(sb);
-  for (const arq of ['maps/brisamar.js', 'maps/forest.js', 'maps/ruin_entry.js', 'maps/valdora.js', 'maps/esgoto.js', 'data/dialogs_f1.js', 'data/dialogs_f2.js']) {
+  for (const arq of ['systems/mecanismos.js', 'maps/brisamar.js', 'maps/forest.js', 'maps/ruin_entry.js', 'maps/valdora.js', 'maps/esgoto.js', 'maps/montanha.js', 'maps/ruinas1.js', 'maps/ruinas2.js', 'data/dialogs_f1.js', 'data/dialogs_f2.js', 'data/dialogs_f3.js']) {
     vm.runInContext(read(path.join(SRC, arq)), sb, { timeout: 1000 });
   }
   return sb;
@@ -325,6 +325,73 @@ if (DEFS) {
       if (bfsOk && !(['6,0', '7,0', '6,1', '7,1'].some(k => alcRu.has(k)))) { bfsOk = false; bfsBad = 'ruína porta norte'; }
       if (bfsOk && !(['6,9', '7,9', '6,8', '7,8'].some(k => alcRu.has(k)))) { bfsOk = false; bfsBad = 'ruína porta sul'; }
     }
+    // F3 — def com portões aplicados (mesma fonte do jogo: Cristal.Mecanismos)
+    const defComGates = (def, flags) => {
+      const Mec = DEFS.Cristal && DEFS.Cristal.Mecanismos;
+      const celulas = def.tiles.map(r => r.split(''));
+      Mec.aplicarPortoes(def, celulas, flags || {});
+      return Object.assign({}, def, { tiles: celulas.map(r => r.join('')) });
+    };
+    const bloqObjetos = (def, tipos) =>
+      (def.objects || []).filter(o => tipos.indexOf(o.type) !== -1).map(o => [o.tx, o.ty]);
+    // Montanha a partir de de_valdora(10,11)
+    if (bfsOk) {
+      const mo = DEFS.MAP_MONTANHA;
+      const alcMo = bfs(mo, 10, 11, [[4, 7]]);
+      const alvosMo = [[4, 7, 'placa-acampamento'], [1, 1, 'registro-1'], [9, 0, 'porta-ruinas'],
+        [10, 0, 'porta-ruinas2'], [9, 11, 'saida-sul'], [5, 4, 'tenda-perto'], [5, 7, 'fogueira']];
+      for (const [qx, qy, qn] of alvosMo) {
+        if (!pertoDe(alcMo, qx, qy) && !alcMo.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'montanha ' + qn; break; }
+      }
+    }
+    // Ruínas 1: saguão sul livre; norte selado até o enigma; alcove selado até a ponte
+    if (bfsOk) {
+      const r1 = DEFS.MAP_RUINAS1;
+      const bloqR1 = [[4, 9], [11, 10], [17, 9], [6, 12], [6, 2], [18, 2]];
+      const alcR1f = bfs(r1, 11, 12, bloqR1);
+      const alvosSul = [[4, 9, 'painel-sol'], [11, 10, 'painel-estrela'], [17, 9, 'painel-lua'],
+        [6, 12, 'placa-ordem'], [1, 9, 'saida-oeste'], [10, 12, 'volta-montanha']];
+      for (const [qx, qy, qn] of alvosSul) {
+        if (!pertoDe(alcR1f, qx, qy) && !alcR1f.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'ruinas1 fechado ' + qn; break; }
+      }
+      if (bfsOk && pertoDe(alcR1f, 6, 2)) { bfsOk = false; bfsBad = 'ruinas1 sala norte aberta sem enigma'; }
+      if (bfsOk) {
+        const alcR1e = bfs(defComGates(r1, { f3_enigma: true }), 11, 12, bloqR1);
+        if (!pertoDe(alcR1e, 6, 2)) { bfsOk = false; bfsBad = 'ruinas1 interruptor A pós-enigma'; }
+        else if (alcR1e.has('19,4')) { bfsOk = false; bfsBad = 'ruinas1 registro2 sem ponte'; }
+      }
+      if (bfsOk) {
+        const alcR1p = bfs(defComGates(r1, { f3_enigma: true, sw_ruin_a: true }), 11, 12, bloqR1);
+        for (const [qx, qy, qn] of [[18, 2, 'interruptor-b'], [19, 4, 'registro-2']]) {
+          if (!pertoDe(alcR1p, qx, qy) && !alcR1p.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'ruinas1 aberto ' + qn; break; }
+        }
+      }
+    }
+    // Ruínas 2: diários/C/placas alcançáveis; cofre e ilhota selados sem a magia
+    if (bfsOk) {
+      const r2 = DEFS.MAP_RUINAS2;
+      const bloqR2 = [[9, 1], [13, 1], [1, 9], [1, 10], [1, 11], [1, 2], [16, 10], [14, 10]];
+      const alcR2f = bfs(r2, 19, 5, bloqR2);
+      const alvosR2 = [[9, 1, 'placa-chefe'], [13, 1, 'passagem-secreta'], [1, 9, 'diario1'],
+        [1, 10, 'diario2'], [1, 11, 'diario3'], [1, 2, 'interruptor-c'], [14, 10, 'placa-mag'],
+        [2, 12, 'registro-3'], [10, 1, 'frente-porta-chefe'], [20, 4, 'volta-ruinas1']];
+      for (const [qx, qy, qn] of alvosR2) {
+        if (!pertoDe(alcR2f, qx, qy) && !alcR2f.has(qx + ',' + qy)) { bfsOk = false; bfsBad = 'ruinas2 fechado ' + qn; break; }
+      }
+      if (bfsOk && pertoDe(alcR2f, 16, 10)) { bfsOk = false; bfsBad = 'ruinas2 ilhota alcançável a pé'; }
+      if (bfsOk) {
+        const alcR2c = bfs(defComGates(r2, { sw_ruin_mag: true }), 19, 5, bloqR2);
+        if (!alcR2c.has('19,10')) { bfsOk = false; bfsBad = 'ruinas2 cofre sem abrir com magia'; }
+      }
+      if (bfsOk) {
+        const defAberto = defComGates(r2, { sw_ruin_a: true, sw_ruin_b: true, sw_ruin_c: true });
+        if (defAberto.tiles[0][10] !== 'd' || defAberto.tiles[0][11] !== 'd') { bfsOk = false; bfsBad = 'ruinas2 porta do chefe sem abrir'; }
+        else {
+          const alcR2a = bfs(defAberto, 19, 5, bloqR2);
+          if (!alcR2a.has('10,0') || !alcR2a.has('11,0')) { bfsOk = false; bfsBad = 'ruinas2 porta do chefe sem atravessar'; }
+        }
+      }
+    }
   } catch (e) { bfsOk = false; bfsBad = String(e.message); }
 } else { bfsOk = false; bfsBad = 'defs não carregaram'; }
 t('A16 BFS: spawns alcançam NPCs/objetos/saídas (anti soft-lock)', bfsOk, bfsBad);
@@ -336,7 +403,7 @@ if (DEFS && DEFS.DIALOGS_F1) {
     const D = {};
     for (const k of Object.keys(DEFS)) if (/^DIALOGS_/.test(k) && DEFS[k]) Object.assign(D, DEFS[k]);
     const refs = [];
-    for (const def of [DEFS.MAP_BRISAMAR, DEFS.MAP_FOREST, DEFS.MAP_RUIN_ENTRY, DEFS.MAP_VALDORA, DEFS.MAP_ESGOTO]) {
+    for (const def of [DEFS.MAP_BRISAMAR, DEFS.MAP_FOREST, DEFS.MAP_RUIN_ENTRY, DEFS.MAP_VALDORA, DEFS.MAP_ESGOTO, DEFS.MAP_MONTANHA, DEFS.MAP_RUINAS1, DEFS.MAP_RUINAS2]) {
       if (!def) continue;
       for (const n of (def.npcs || [])) { if (n.dialogs) { refs.push(n.dialogs.first); if (n.dialogs.repeat) refs.push(n.dialogs.repeat); } if (n.reqDialog) refs.push(n.reqDialog); }
       for (const o of (def.objects || [])) { if (o.dialog) refs.push(o.dialog); if (o.reqDialog) refs.push(o.reqDialog); }
@@ -377,7 +444,7 @@ t('A18 floresta idêntica ao LCG canônico', lcgOk, lcgBad);
 let dimOk = true, dimBad = '';
 if (DEFS) {
   try {
-    for (const [nome, def] of [['brisamar', DEFS.MAP_BRISAMAR], ['forest', DEFS.MAP_FOREST], ['ruin_entry', DEFS.MAP_RUIN_ENTRY], ['valdora', DEFS.MAP_VALDORA], ['esgoto', DEFS.MAP_ESGOTO]]) {
+    for (const [nome, def] of [['brisamar', DEFS.MAP_BRISAMAR], ['forest', DEFS.MAP_FOREST], ['ruin_entry', DEFS.MAP_RUIN_ENTRY], ['valdora', DEFS.MAP_VALDORA], ['esgoto', DEFS.MAP_ESGOTO], ['montanha', DEFS.MAP_MONTANHA], ['ruinas1', DEFS.MAP_RUINAS1], ['ruinas2', DEFS.MAP_RUINAS2]]) {
       if (!def || !Array.isArray(def.tiles) || def.tiles.length !== def.h) { dimOk = false; dimBad = nome + ': altura'; break; }
       for (let j = 0; j < def.tiles.length; j++) {
         if (def.tiles[j].length !== def.w) { dimOk = false; dimBad = nome + ' linha ' + j; break; }
@@ -399,7 +466,7 @@ try {
   const usadas = new Set();
   const sb2 = { console };
   vm.createContext(sb2);
-  for (const arq of ['data/dialogs_f1.js', 'data/dialogs_f2.js']) {
+  for (const arq of ['data/dialogs_f1.js', 'data/dialogs_f2.js', 'data/dialogs_f3.js']) {
     vm.runInContext(read(path.join(SRC, arq)), sb2, { timeout: 1000 });
   }
   for (const k of Object.keys(sb2)) {
@@ -444,6 +511,64 @@ let ovOk = true, ovBad = '';
   if (ovOk && !/orientation:\s*portrait/.test(dist)) { ovOk = false; ovBad = 'sem fallback de retrato'; }
 }
 t('A22 overlay experimental íntegro (visibilidade+vetor+gamepad+layouts)', ovOk, ovBad);
+
+// A23: mecanismos F3 — mesma fonte do jogo (Cristal.Mecanismos): portões
+// idempotentes, enigma ordenado, full-progress alcançável, 5 registros únicos
+let mec23Ok = true, mec23Bad = '';
+if (DEFS && DEFS.Cristal && DEFS.Cristal.Mecanismos) {
+  try {
+    const Mec = DEFS.Cristal.Mecanismos;
+    const C = (d) => d.tiles.map(r => r.split(''));
+    // portões idempotentes + progressivos
+    const M1a = C(DEFS.MAP_RUINAS1);
+    const n1 = Mec.aplicarPortoes(DEFS.MAP_RUINAS1, M1a, { f3_enigma: true, sw_ruin_a: true });
+    const n2 = Mec.aplicarPortoes(DEFS.MAP_RUINAS1, M1a, { f3_enigma: true, sw_ruin_a: true });
+    if (!(n1 > 0 && n2 === 0)) { mec23Ok = false; mec23Bad = 'portões não idempotentes'; }
+    if (mec23Ok) {
+      const M1f = C(DEFS.MAP_RUINAS1);
+      Mec.aplicarPortoes(DEFS.MAP_RUINAS1, M1f, {});
+      if (M1f[6][10] !== 'G' || M1f[3][15] !== 'O' || M1a[6][10] !== 'd' || M1a[3][15] !== 'V') {
+        mec23Ok = false; mec23Bad = 'portões ruinas1 fora do esperado';
+      }
+    }
+    // enigma: ordem certa avança, erro zera
+    if (mec23Ok) {
+      const r0 = Mec.acertarPainel(0, 0, 3), r1 = Mec.acertarPainel(1, 2, 3), r2 = Mec.acertarPainel(2, 2, 3);
+      if (!(r0.prog === 1 && !r0.erro && r1.prog === 0 && r1.erro && r2.completo)) {
+        mec23Ok = false; mec23Bad = 'enigma fora da ordem';
+      }
+    }
+    // full progress: tudo aberto e o cofre atravessável
+    if (mec23Ok) {
+      const tudo = { f3_enigma: true, sw_ruin_a: true, sw_ruin_b: true, sw_ruin_c: true, sw_ruin_mag: true };
+      const M2 = C(DEFS.MAP_RUINAS2);
+      Mec.aplicarPortoes(DEFS.MAP_RUINAS2, M2, tudo);
+      if (M2[0][10] !== 'd' || M2[0][11] !== 'd' || M2[8][19] !== 'd') {
+        mec23Ok = false; mec23Bad = 'ruinas2 sem abrir tudo';
+      } else {
+        const defAberto = Object.assign({}, DEFS.MAP_RUINAS2, { tiles: M2.map(r => r.join('')) });
+        const alc = bfs(defAberto, 19, 5, [[9, 1], [13, 1], [1, 9], [1, 10], [1, 11], [1, 2], [16, 10], [14, 10]]);
+        if (!alc.has('19,10') || !alc.has('10,0')) { mec23Ok = false; mec23Bad = 'full-progress sem alcançar cofre/chefe'; }
+      }
+    }
+    // 5 registros únicos + contador coerente
+    if (mec23Ok) {
+      const ids = [];
+      for (const d of [DEFS.MAP_MONTANHA, DEFS.MAP_RUINAS1, DEFS.MAP_RUINAS2]) {
+        for (const o of (d.objects || [])) {
+          if (o.type === 'registro') ids.push(o.id);
+          if (o.recordId) ids.push(o.recordId);
+        }
+      }
+      const unicos = new Set(ids);
+      if (ids.length !== 5 || unicos.size !== 5) { mec23Ok = false; mec23Bad = 'registros != 5 únicos (' + ids.length + ')'; }
+      else if (Mec.TOTAL_REGISTROS !== 5 || Mec.contarRegistros({ registro_f3_1: 1, registro_f3_3: 1 }) !== 2) {
+        mec23Ok = false; mec23Bad = 'contador de registros incoerente';
+      }
+    }
+  } catch (e) { mec23Ok = false; mec23Bad = String(e.message); }
+} else { mec23Ok = false; mec23Bad = 'Cristal.Mecanismos não carregou'; }
+t('A23 mecanismos F3 íntegros (portões+enigma+registros, mesma fonte do jogo)', mec23Ok, mec23Bad);
 
 console.log('1..' + n);
 console.log(fail === 0 ? '# SEVERA PASS ' + n + '/' + n : '# SEVERA FAIL (' + fail + ' falhas)');

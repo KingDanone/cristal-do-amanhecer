@@ -20,7 +20,7 @@ var SaveSystem = (typeof SaveSystem !== 'undefined' && SaveSystem !== null) ? Sa
 SaveSystem.SAVE_VERSION = 1;
 SaveSystem.DEFAULT_SLOT = 'principal';
 SaveSystem.KEY_PREFIX = 'cristalAmanhecer.v1.';
-SaveSystem.MAX_HP = 10; // F2: +1 coração após o Cavaleiro Corrompido (era 8)
+SaveSystem.MAX_HP = 12; // F3: +1 coração após o Sentinela de Ferro (Cap. 2: 10)
 SaveSystem._memoryFallback = (SaveSystem._memoryFallback && typeof SaveSystem._memoryFallback === 'object')
   ? SaveSystem._memoryFallback
   : {};
@@ -151,7 +151,8 @@ SaveSystem._collectPlayer = function () {
         posicao.hpMax = maximo;
       } else {
         try {
-          posicao.hpMax = (typeof Game !== 'undefined' && Game && Game.flags && Game.flags.boss2_defeated) ? 10 : 8;
+          posicao.hpMax = (typeof Game !== 'undefined' && Game && Game.flags)
+            ? (Game.flags.boss3_defeated ? 12 : Game.flags.boss2_defeated ? 10 : 8) : 8;
         } catch (erroMax) {
           posicao.hpMax = 8;
         }
@@ -287,6 +288,8 @@ SaveSystem.applySaveData = function (dados) {
       var maxSalvo = Math.floor(Number(dados.jogador.hpMax));
       if (isFinite(maxSalvo) && maxSalvo >= 8 && maxSalvo <= SaveSystem.MAX_HP) {
         P.hpMax = maxSalvo;
+      } else if (typeof Game !== 'undefined' && Game && Game.flags && Game.flags.boss3_defeated) {
+        P.hpMax = 12;
       } else if (typeof Game !== 'undefined' && Game && Game.flags && Game.flags.boss2_defeated) {
         P.hpMax = 10;
       }
