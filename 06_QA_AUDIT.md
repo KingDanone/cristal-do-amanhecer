@@ -14,15 +14,14 @@ sh tools/validate.sh                                         # PORTÃO ÚNICO: c
 ```
 Portão antes de cada commit: `sh tools/validate.sh`. **Commit só com VALIDATE PASS** (D-14).
 
-## Status atual (2026-10-12, F2 entregue)
+## Status atual (2026-10-14, F2.5 legibilidade — branch `exp/f2.5-apresentacao`)
 - `node --check` em todos os `.js` (src + tools): **PASS**.
-- `tools/build.js --check-size`: **PASS** (último run: ~170 KB / 250 KB, 17 módulos + shell).
+- `tools/build.js --check-size`: **PASS** (179.8 KB / 250 KB, 17 módulos + shell).
 - `tools/smoke.js`: **PASS 40/40**.
-- `tools/audit.js` (severa): **PASS 21/21** (A16 BFS em 5 mapas, A17 refs, A18 LCG, A20 dimensões, A21 flags).
-- Browser MCP Chromium F1 (BC-F1-01..BC-F1-16): **PASS**; evidências em `evidence/f1-browser/`.
-- Browser MCP Chromium F2 (BC-F2-01..BC-F2-15): **PASS** (ver seção abaixo); evidências em `evidence/f2-browser/01..06`.
-- `dist/cristal.html` é o entregável jogável atual (F2: Valdora + esgotos + Cavaleiro); `cristal-cap1.html` segue
-  intacto como referência/régua do smoke. Próxima fase: F3 (Ruínas do Norte).
+- `tools/audit.js` (severa): **PASS 22/22**.
+- Browser MCP Chromium (paisagem 844×390): console **0 mensagens**; evidência
+  `evidence/exp-f2.5/05-toast-faixa.png` (faixa do objetivo + toast de 2 linhas).
+- Próxima fase: F3 (Ruínas do Norte). Branch de trabalho: `exp/f2.5-apresentacao`.
 
 ## Checklist por fase
 Legenda: ✅ coberto por teste automatizado · 🔲 manual · — não se aplica.
@@ -178,6 +177,25 @@ Roteiro (Chromium MCP; paisagem 844×390 + retrato 390×700):
 | BC-X11 | Escolha do Darius 100% no touch | D-pad baixa 0→1; botão A confirma; `kael_defiant=true` |
 | BC-X12 | Rótulos por dispositivo | toque=A/B/C; teclado=Z/X/C + dica WASD·JKL |
 
+### Pass de legibilidade F2.5 (outro agente, verificado em 2026-10-14) — PASS
+Escopo: só apresentação de textos em `src/main.js`; balões de fala intactos.
+Verificado por diff + `validate.sh` + screenshot no navegador.
+
+| # | Item | Verificação |
+|---|---|---|
+| TX-01 | `txt()` com contorno preto em 8 direções | diff confere; legível sobre grama/areia na evidência |
+| TX-02 | `faixaHud()` (faixa escura + borda clara) | nova função; usada em objetivo/toast/chefe/menus |
+| TX-03 | Toast 9px bold branco, até 2 linhas centralizadas | `05-toast-faixa.png`: toast longo quebrado em 2 linhas sobre faixa |
+| TX-04 | Objetivo com faixa própria + quebra em 2 linhas | visível na evidência; sem regressão de layout |
+| TX-05 | Chefe: faixa + borda na barra, nome `#ffb3b3` | diff confere (não retestado visualmente — sem screenshot de chefe nesta rodada) |
+| TX-06 | Cinzas ilegíveis (`#555/#666/#888`) → `#999`–`#fff`; menus 9–10px + faixa verde de seleção | diff confere |
+| TX-07 | Portão de qualidade intacto | build 179.8 KB; smoke 40/40; audit 22/22; console 0 msgs |
+
+Observações (sem bloqueio, registradas p/ o próximo chat):
+- `var wChefe` + `void wChefe;` ficou como código morto no bloco do chefe — inofensivo, limpar quando tocar ali.
+- Toast e objetivo podem sobrepor as faixas se o objetivo quebrar em 2 linhas e um toast aparecer junto (faixa do objetivo vai até y~39, toast começa em y28). Raro e não testado visualmente; aceitar ou ajustar numa passada futura.
+- TX-05 sem evidência visual nesta rodada (só diff + testes automatizados).
+
 Impossíveis (NÃO aprovados): gamepad com hardware real (DualShock/Xbox/genérico);
 fullscreen real em celular (headless não valida); gesto multitoque simultâneo
 (D-pad + A ao mesmo tempo) com dedos reais; iOS Safari.
@@ -204,3 +222,4 @@ Evidências F2.5 (branch): `evidence/exp-f2.5/01-landscape-play.png`,
 | 2026-10-12 | Browser MCP Chromium F2 rodada 1 (BC-F2) | **FAIL** — achou B8 (clobber `irParaValdora`), colisão `darius_left`, placa? não — baú/placa ok; + B9 (`hpMax`), A21 (`esconderijo`), objetivo arena2 |
 | 2026-10-12 | Fixes + rodada 2 (BC-F2-01..15, evidências 01..06) | **PASS tudo; console 0 msgs** |
 | 2026-10-12 | Browser MCP Chromium F2.5 (branch `exp/f2.5-apresentacao`, BC-X1..X8) | **PASS tudo; console 0 msgs** |
+| 2026-10-14 | Pass de legibilidade F2.5 (outro agente): contorno 8-dir + faixas + 9px | Diff confere c/ relatório; `sh tools/validate.sh` PASS (179.8 KB, 40/40, 22/22); evidência `evidence/exp-f2.5/05-toast-faixa.png`; console 0 msgs |

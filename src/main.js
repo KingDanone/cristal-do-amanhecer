@@ -922,9 +922,25 @@ function wrap(t, w) {
   o.push(l); return o;
 }
 function txt(t, a, b, c, al) {
+  // Legibilidade profissional: contorno preto em 8 direções (funciona sobre
+  // grama clara, areia de Valdora, flash branco e céu). Mesmo tamanho de
+  // fonte dos balões — só o contorno ficou mais forte.
   x.textAlign = al || 'left';
-  x.fillStyle = '#000'; x.fillText(t, a + 1, b + 1);
+  x.fillStyle = '#000';
+  x.fillText(t, a - 1, b); x.fillText(t, a + 1, b);
+  x.fillText(t, a, b - 1); x.fillText(t, a, b + 1);
+  x.fillText(t, a - 1, b - 1); x.fillText(t, a + 1, b - 1);
+  x.fillText(t, a - 1, b + 1); x.fillText(t, a + 1, b + 1);
   x.fillStyle = c || '#fff'; x.fillText(t, a, b);
+}
+// Faixa escura atrás de textos de HUD (objetivo/toast/chefe): garante
+// contraste mesmo sobre tiles claros. Retorna a caixa desenhada.
+function faixaHud(bx, by, bw, bh) {
+  F('rgba(0,0,16,0.72)', bx, by, bw, bh);
+  try {
+    x.strokeStyle = 'rgba(255,255,255,0.28)'; x.lineWidth = 1;
+    x.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
+  } catch (e) {}
 }
 var COR_NPC = { 'Mãe': '#4a9c5d', 'Darius': '#c0392b', 'Morador': '#9aa0a6', 'Mestre Orin': '#5d6d7e', 'Menina': '#e88ec9', 'Capitão': '#3a6ea5', 'Refugiado': '#8a7a5a', 'Estranho': '#2a1a3a' };
 function desenharNpc(n) {
@@ -1094,24 +1110,27 @@ function render() {
       var ehT = false;
       try { ehT = ehToque(); } catch (e) {}
       if (fr % 60 < 40) {
-        txt(ehT ? 'A: Novo jogo' : 'Z: Novo jogo', W / 2, 110, '#fff', 'center');
-        txt(hasSave ? (ehT ? 'C: Continuar' : 'C: Continuar') : 'Toque para começar', W / 2, 122, hasSave ? '#7f7' : '#fff', 'center');
-        txt(ehT ? 'B: mudar nome' : 'X: mudar nome', W / 2, 134, '#888', 'center');
+        x.font = 'bold 9px monospace';
+        txt(ehT ? 'A: Novo jogo' : 'Z: Novo jogo', W / 2, 110, '#ffffff', 'center');
+        txt(hasSave ? (ehT ? 'C: Continuar' : 'C: Continuar') : 'Toque para começar', W / 2, 122, hasSave ? '#8cff8c' : '#ffffff', 'center');
+        x.font = 'bold 8px monospace';
+        txt(ehT ? 'B: mudar nome' : 'X: mudar nome', W / 2, 134, '#cccccc', 'center');
       }
     } else {
-      txt('B: cancelar   A: confirmar', W / 2, 106, '#888', 'center');
+      x.font = 'bold 8px monospace';
+      txt('B: cancelar   A: confirmar', W / 2, 106, '#cccccc', 'center');
       x.font = 'bold 8px monospace';
       for (var li = 0; li < 8; li++) {
         var ch2 = nomeChars[li] || ' ';
-        txt(ch2, W / 2 - 42 + li * 12, 124, li === nomeCursor ? '#7f7' : '#fff', 'center');
-        if (li === nomeCursor && fr % 40 < 25) txt('▲', W / 2 - 42 + li * 12, 136, '#7f7', 'center');
+        txt(ch2, W / 2 - 42 + li * 12, 124, li === nomeCursor ? '#8cff8c' : '#ffffff', 'center');
+        if (li === nomeCursor && fr % 40 < 25) txt('▲', W / 2 - 42 + li * 12, 136, '#8cff8c', 'center');
       }
     }
     var muted = false;
     try { muted = Aud && typeof Aud.isMuted === 'function' && Aud.isMuted(); } catch (e) {}
-    x.font = 'bold 7px monospace';
-    txt(muted ? 'M: som off' : 'M: som on', W / 2, 144, '#666', 'center');
-    txt('WASD move · J=A K=B L=C · gamepad ok', W / 2, 154, '#555', 'center');
+    x.font = 'bold 8px monospace';
+    txt(muted ? 'M: som off' : 'M: som on', W / 2, 144, '#bbbbbb', 'center');
+    txt('WASD move · J=A K=B L=C · gamepad ok', W / 2, 154, '#999999', 'center');
     return;
   }
   if (!P) return;
@@ -1153,12 +1172,27 @@ function render() {
     }
   }
   for (var hi = 0; hi < (P.hpMax || 8); hi++) F(hi < P.hp ? '#e33' : '#411', 4 + hi * 7, 4, 6, 6);
+  // Objetivo: mesma fonte dos balões (8px), mas sobre faixa escura + amarelo
+  // de alto contraste. Quebra em 2 linhas se passar de 228px.
   x.font = 'bold 8px monospace';
-  txt('▶ ' + textoObjetivo(), 4, 22, '#ffd866');
+  (function desenharObjetivo() {
+    var linhasObj = wrap('▶ ' + textoObjetivo(), 224);
+    if (linhasObj.length > 2) linhasObj = linhasObj.slice(0, 2);
+    var hObj = linhasObj.length * 10 + 5;
+    faixaHud(2, 12, 236, hObj + 2);
+    for (var oi2 = 0; oi2 < linhasObj.length; oi2++) txt(linhasObj[oi2], 6, 22 + oi2 * 10, '#ffd866');
+  })();
   if (B && B.hp > 0) {
+    // Chefe: nome + barra sobre faixa escura, com borda clara na barra.
     x.font = 'bold 8px monospace';
-    txt(B.nome || 'Chefe', 62, H - 15, '#f99');
-    F('#000', 60, H - 12, 120, 6); F('#c33', 61, H - 11, 118 * B.hp / (B.hpMax || 24), 4);
+    var rotChefe = B.nome || 'Chefe';
+    var wChefe = Math.min(150, Math.max(70, x.measureText(rotChefe).width + 14));
+    faixaHud(60 - 4, H - 26, 128, 20);
+    txt(rotChefe, 62, H - 15, '#ffb3b3');
+    F('#000', 60, H - 12, 120, 6);
+    try { x.strokeStyle = 'rgba(255,255,255,0.5)'; x.lineWidth = 1; x.strokeRect(60.5, (H - 12) + 0.5, 119, 5); } catch (e) {}
+    F('#c33', 61, H - 11, 118 * B.hp / (B.hpMax || 24), 4);
+    void wChefe;
   }
   var toastOn = false, toastTxt = mt;
   if (UI && typeof UI.toastVisivel === 'function') {
@@ -1168,7 +1202,19 @@ function render() {
       if (toastOn && typeof UI.obterToast === 'function') toastTxt = UI.obterToast().texto;
     } catch (e) { toastOn = tt > 0; }
   } else toastOn = tt > 0;
-  if (toastOn) { x.font = 'bold 8px monospace'; txt(toastTxt, W / 2, 38, '#fff', 'center'); }
+  if (toastOn) {
+    // Toast/aviso: fonte MAIOR que antes (9px bold), branco puro sobre faixa
+    // escura, com quebra em até 2 linhas centralizadas. Nada de texto solto
+    // sobre o cenário — era isso que ficava ilegível.
+    x.font = 'bold 9px monospace';
+    var linhasToast = wrap(String(toastTxt || ''), 200).slice(0, 2);
+    var maxToast = 0;
+    for (var ti2 = 0; ti2 < linhasToast.length; ti2++) maxToast = Math.max(maxToast, x.measureText(linhasToast[ti2]).width);
+    var wToast = Math.min(232, Math.max(60, maxToast + 16));
+    var hToast = linhasToast.length * 11 + 7;
+    faixaHud(Math.round(W / 2 - wToast / 2), 28, Math.round(wToast), hToast);
+    for (var ti3 = 0; ti3 < linhasToast.length; ti3++) txt(linhasToast[ti3], W / 2, 37 + ti3 * 11, '#ffffff', 'center');
+  }
   x.font = 'bold 8px monospace';
   if (st === 'talk') {
     F('#112', 4, 100, 232, 56);
@@ -1184,7 +1230,11 @@ function render() {
         var opts = Dlg.obterOpcoesEscolha();
         if (opts && opts.length) {
           txt('Escolha:', 10, 112, '#ffd866');
-          for (var oi = 0; oi < opts.length; oi++) txt((oi === Dlg.obterIndiceEscolha() ? '▶ ' : '  ') + opts[oi].label, 10, 124 + oi * 10, '#fff');
+          for (var oi = 0; oi < opts.length; oi++) {
+            var selOi = oi === Dlg.obterIndiceEscolha();
+            if (selOi) faixaHud(8, 114 + oi * 10, 224, 11);
+            txt((selOi ? '▶ ' : '  ') + opts[oi].label, 10, 124 + oi * 10, selOi ? '#8cff8c' : '#ffffff');
+          }
         }
       } catch (e) {}
     }
@@ -1205,23 +1255,39 @@ function render() {
     var muted2 = false;
     try { muted2 = Aud && Aud.isMuted && Aud.isMuted(); } catch (e) {}
     var ops = ['Continuar', muted2 ? 'Som: desligado' : 'Som: ligado', 'Reiniciar sala'];
-    txt('PAUSA', W / 2, 60, '#ffd866', 'center');
-    for (var mi = 0; mi < ops.length; mi++) txt((mi === menuIdx ? '▶ ' : '  ') + ops[mi], W / 2, 78 + mi * 12, '#fff', 'center');
+    x.font = 'bold 10px monospace';
+    txt('PAUSA', W / 2, 58, '#ffd866', 'center');
+    x.font = 'bold 9px monospace';
+    for (var mi = 0; mi < ops.length; mi++) {
+      var selMi = mi === menuIdx;
+      if (selMi) faixaHud(W / 2 - 90, 68 + mi * 13, 180, 13);
+      txt((selMi ? '▶ ' : '  ') + ops[mi], W / 2, 78 + mi * 13, selMi ? '#8cff8c' : '#ffffff', 'center');
+    }
   }
-  if (st === 'over') { F('rgba(0,0,0,.7)', 0, 0, W, H); txt('Você caiu...', W / 2, 76, '#f66', 'center'); txt('Toque para tentar de novo', W / 2, 92, '#fff', 'center'); }
+  if (st === 'over') {
+    F('rgba(0,0,0,.7)', 0, 0, W, H);
+    x.font = 'bold 11px monospace';
+    txt('Você caiu...', W / 2, 76, '#ff6666', 'center');
+    x.font = 'bold 9px monospace';
+    txt('Toque para tentar de novo', W / 2, 94, '#ffffff', 'center');
+  }
   if (st === 'end') {
     F('#000', 0, 0, W, H);
     for (var ti = 0; ti < 30; ti++) F('#fff', (ti * 53) % W, (ti * 37) % H, 1, 1);
+    x.font = 'bold 11px monospace';
     txt('FIM DO CAPÍTULO 1', W / 2, 50, '#ffd866', 'center');
-    txt('A Cidade de Valdora o aguarda', W / 2, 70, '#9cf', 'center');
+    x.font = 'bold 9px monospace';
+    txt('A Cidade de Valdora o aguarda', W / 2, 70, '#99ccff', 'center');
     var toque = false;
     try { toque = ehToque(); } catch (e) {}
     // D-23: rótulos conforme o dispositivo (no toque valem os botões da tela).
     var rotA = toque ? 'A: jogar de novo' : 'Z: jogar de novo';
     var rotC = toque ? 'C: seguir para Valdora' : 'C: seguir para Valdora';
-    txt((endIdx === 0 ? '▶ ' : '  ') + rotA, W / 2, 106, '#fff', 'center');
-    txt((endIdx === 1 ? '▶ ' : '  ') + rotC, W / 2, 120, '#7f7', 'center');
-    if (fr % 60 < 40) txt(toque ? 'Toque p/ confirmar' : 'Cima/baixo escolhe · Z confirma', W / 2, 136, '#888', 'center');
+    if (endIdx === 0) faixaHud(W / 2 - 90, 96, 180, 13);
+    else faixaHud(W / 2 - 90, 110, 180, 13);
+    txt((endIdx === 0 ? '▶ ' : '  ') + rotA, W / 2, 106, endIdx === 0 ? '#8cff8c' : '#ffffff', 'center');
+    txt((endIdx === 1 ? '▶ ' : '  ') + rotC, W / 2, 120, endIdx === 1 ? '#8cff8c' : '#ffffff', 'center');
+    if (fr % 60 < 40) { x.font = 'bold 8px monospace'; txt(toque ? 'Toque p/ confirmar' : 'Cima/baixo escolhe · Z confirma', W / 2, 138, '#cccccc', 'center'); }
   }
   var fadeA = 0;
   try {
