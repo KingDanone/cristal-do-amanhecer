@@ -3,8 +3,10 @@
 RPG 2D top-down em **um único arquivo HTML** (`dist/cristal.html`), sem
 dependências, mobile-first, em pt-BR.
 
-- **Jogar online:** `https://<usuario>.github.io/<repo>/` (landing) ou direto em
-  `/dist/cristal.html` (GitHub Pages, branch `main`).
+- **Jogar online:** `https://kingdanone.github.io/cristal-do-amanhecer/` (landing)
+  ou direto em
+  `https://kingdanone.github.io/cristal-do-amanhecer/dist/cristal.html`
+  (GitHub Pages, branch `main`).
 - **Jogar local:** `python3 -m http.server 8901` na raiz e abrir
   `http://localhost:8901/dist/cristal.html`.
 
